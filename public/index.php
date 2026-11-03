@@ -567,11 +567,27 @@ $csrfToken = CsrfProtection::getToken();
             // Center of Dhaka (Farmgate/Agargaon area)
             map = L.map('map').setView([23.7680, 90.3850], 13);
 
-            // OpenStreetMap tile layer
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            // Light theme: OSM standard tiles
+            const lightTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 maxZoom: 19,
                 attribution: '&copy; OpenStreetMap contributors | BharaKoto Dhaka'
-            }).addTo(map);
+            });
+
+            // Dark theme: CartoDB Dark Matter (free, no API key required)
+            const darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                maxZoom: 19,
+                attribution: '&copy; OpenStreetMap contributors &copy; CARTO | BharaKoto Dhaka'
+            });
+
+            // Add appropriate layer based on current theme
+            if (document.documentElement.classList.contains('dark')) {
+                darkTiles.addTo(map);
+            } else {
+                lightTiles.addTo(map);
+            }
+
+            // Store references for theme switching
+            window.bharakotoTileLayers = { light: lightTiles, dark: darkTiles };
 
             zonesLayerGroup = L.layerGroup().addTo(map);
 
@@ -1196,9 +1212,13 @@ $csrfToken = CsrfProtection::getToken();
                     is_raining: isRain ? 1 : 0
                 };
 
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+                const headers = { 'Content-Type': 'application/json' };
+                if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
                 const res = await fetch('api/estimate.php', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: headers,
                     body: JSON.stringify(payload)
                 });
 

@@ -239,18 +239,59 @@ $csrfToken = CsrfProtection::getToken();
         let existingZonesLayer = null;
 
         document.addEventListener('DOMContentLoaded', () => {
+            // Sync theme with main page (shared localStorage)
+            const stored = localStorage.getItem('theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const isDark = stored ? stored === 'dark' : prefersDark;
+            if (isDark) document.documentElement.classList.add('dark');
+
             initAdminMap();
             loadZonesTable();
+
+            // Listen for theme changes from main page - swap tile layers
+            window.addEventListener('storage', (e) => {
+                if (e.key === 'theme') {
+                    const isDark = e.newValue === 'dark';
+                    document.documentElement.classList.toggle('dark', isDark);
+                    if (window.bharakotoAdminTileLayers && adminMap) {
+                        const { light, dark } = window.bharakotoAdminTileLayers;
+                        if (isDark) {
+                            if (adminMap.hasLayer(light)) adminMap.removeLayer(light);
+                            if (!adminMap.hasLayer(dark)) dark.addTo(adminMap);
+                        } else {
+                            if (adminMap.hasLayer(dark)) adminMap.removeLayer(dark);
+                            if (!adminMap.hasLayer(light)) light.addTo(adminMap);
+                        }
+                    }
+                }
+            });
         });
 
         function initAdminMap() {
             // Center of Dhaka (Rokeya Sarani / Agargaon area)
             adminMap = L.map('adminMap').setView([23.7710, 90.3850], 13);
 
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            // Light theme: OSM standard tiles
+            const lightTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 maxZoom: 19,
                 attribution: '&copy; OpenStreetMap | BharaKoto Admin'
-            }).addTo(adminMap);
+            });
+
+            // Dark theme: CartoDB Dark Matter (free, no API key required)
+            const darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                maxZoom: 19,
+                attribution: '&copy; OpenStreetMap contributors &copy; CARTO | BharaKoto Admin'
+            });
+
+            // Add appropriate layer based on current theme
+            if (document.documentElement.classList.contains('dark')) {
+                darkTiles.addTo(adminMap);
+            } else {
+                lightTiles.addTo(adminMap);
+            }
+
+            // Store references for theme switching
+            window.bharakotoAdminTileLayers = { light: lightTiles, dark: darkTiles };
 
             existingZonesLayer = L.layerGroup().addTo(adminMap);
             drawnItems = new L.FeatureGroup().addTo(adminMap);

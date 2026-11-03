@@ -155,23 +155,24 @@ try {
     $pdo->exec("UPDATE restricted_zones SET is_active = 0 WHERE zone_name IN ('qaefae', 'badda')");
 
     $updateStmt = $pdo->prepare("
-        UPDATE restricted_zones 
+        UPDATE restricted_zones
         SET zone_name = :name,
             restriction_type = :type,
             restricted_vehicles = :vehicles,
             active_start_time = :start_time,
             active_end_time = :end_time,
             polygon_geojson = :polygon,
+            polygon_geom = ST_GeomFromGeoJSON(:polygon2),
             transfer_hint = :hint,
             is_active = 1
         WHERE id = :id
     ");
 
     $insertStmt = $pdo->prepare("
-        INSERT INTO restricted_zones 
-        (zone_name, city, restricted_vehicles, restriction_type, active_start_time, active_end_time, polygon_geojson, transfer_hint, is_active)
+        INSERT INTO restricted_zones
+        (zone_name, city, restricted_vehicles, restriction_type, active_start_time, active_end_time, polygon_geojson, polygon_geom, transfer_hint, is_active)
         VALUES
-        (:name, 'Dhaka', :vehicles, :type, :start_time, :end_time, :polygon, :hint, 1)
+        (:name, 'Dhaka', :vehicles, :type, :start_time, :end_time, :polygon, ST_GeomFromGeoJSON(:polygon2), :hint, 1)
     ");
 
     foreach ($zonesToSeed as $z) {
@@ -184,6 +185,7 @@ try {
                 ':start_time' => $z['start_time'],
                 ':end_time' => $z['end_time'],
                 ':polygon' => $jsonStr,
+                ':polygon2' => $jsonStr,
                 ':hint' => $z['hint'],
                 ':id' => $z['id']
             ]);
@@ -202,6 +204,7 @@ try {
                     ':start_time' => $z['start_time'],
                     ':end_time' => $z['end_time'],
                     ':polygon' => $jsonStr,
+                    ':polygon2' => $jsonStr,
                     ':hint' => $z['hint'],
                     ':id' => $existingId
                 ]);
@@ -214,6 +217,7 @@ try {
                     ':start_time' => $z['start_time'],
                     ':end_time' => $z['end_time'],
                     ':polygon' => $jsonStr,
+                    ':polygon2' => $jsonStr,
                     ':hint' => $z['hint']
                 ]);
                 echo "[+] Inserted new road zone: {$z['name']}\n";

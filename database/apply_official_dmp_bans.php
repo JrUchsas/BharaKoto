@@ -183,20 +183,22 @@ try {
     $pdo->exec("UPDATE restricted_zones SET is_active = 0");
 
     $insert = $pdo->prepare("
-        INSERT INTO restricted_zones 
-        (zone_name, city, restricted_vehicles, restriction_type, active_start_time, active_end_time, polygon_geojson, transfer_hint, is_active)
+        INSERT INTO restricted_zones
+        (zone_name, city, restricted_vehicles, restriction_type, active_start_time, active_end_time, polygon_geojson, polygon_geom, transfer_hint, is_active)
         VALUES
-        (:name, 'Dhaka', :vehicles, :type, :start_time, :end_time, :polygon, :hint, 1)
+        (:name, 'Dhaka', :vehicles, :type, :start_time, :end_time, :geojson, ST_GeomFromGeoJSON(:geojson2), :hint, 1)
     ");
 
     foreach ($officialBans as $ban) {
+        $polygonJson = json_encode($ban['polygon'], JSON_UNESCAPED_SLASHES);
         $insert->execute([
             ':name' => $ban['name'],
             ':vehicles' => $ban['vehicles'],
             ':type' => $ban['type'],
             ':start_time' => $ban['start_time'],
             ':end_time' => $ban['end_time'],
-            ':polygon' => json_encode($ban['polygon'], JSON_UNESCAPED_SLASHES),
+            ':geojson' => $polygonJson,
+            ':geojson2' => $polygonJson,
             ':hint' => $ban['hint']
         ]);
         echo "[+] Landed official ban: {$ban['name']}\n";
