@@ -193,7 +193,10 @@ $csrfToken = CsrfProtection::getToken();
                             <p class="text-[11px] text-slate-500">Official DMP/DTCA rickshaw-free arterial corridors and custom zones</p>
                         </div>
                         <div class="flex flex-wrap items-center gap-2">
-                            <button onclick="restoreOfficialBans()" class="px-2.5 py-1 text-xs rounded-lg font-semibold bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 transition shadow-sm" title="Restore the 4 authentic DMP VIP corridors">
+                            <button onclick="loadPrecisionOfficialBans()" class="px-2.5 py-1 text-xs rounded-lg font-semibold bg-bdgreen-50 text-bdgreen-700 border border-bdgreen-300 hover:bg-bdgreen-100 transition shadow-sm" title="Load 4 official DMP corridors with precision OSRM road-following geometries" id="loadPrecisionBtn">
+                                🎯 Load Precision DMP Bans
+                            </button>
+                            <button onclick="restoreOfficialBans()" class="px-2.5 py-1 text-xs rounded-lg font-semibold bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 transition shadow-sm" title="Restore the 4 authentic DMP VIP corridors (basic polygons)">
                                 ↺ Restore DMP Corridors
                             </button>
                             <button onclick="deactivateAllZones()" class="px-2.5 py-1 text-xs rounded-lg font-semibold bg-amber-50 text-amber-700 border border-amber-300 hover:bg-amber-100 transition shadow-sm" title="Deactivate all zones">
