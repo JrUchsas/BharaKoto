@@ -517,12 +517,12 @@ $csrfToken = CsrfProtection::getToken();
             }
         }
 
-        // Restore official DMP corridors
+        // Restore official DMP corridors (server-side)
         async function restoreOfficialBans() {
             try {
                 const res = await fetch('api/zones.php', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content },
                     body: JSON.stringify({ action: 'restore_official' })
                 });
                 const json = await res.json();
@@ -531,6 +531,186 @@ $csrfToken = CsrfProtection::getToken();
             } catch (err) {
                 alert('Failed to restore official bans: ' + err.message);
             }
+        }
+
+        // Load precision official DMP bans with OSRM road-following geometries
+        async function loadPrecisionOfficialBans() {
+            const btn = event?.target;
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Loading OSRM Geometries...';
+            }
+
+            try {
+                // Define official DMP corridors with waypoints for OSRM
+                const corridors = [
+                    {
+                        name: 'Mirpur Road Corridor (Gabtoli to Azimpur)',
+                        type: 'vip_road_ban',
+                        vehicles: 'pedal_rickshaw,battery_rickshaw',
+                        start_time: '07:00:00',
+                        end_time: '22:00:00',
+                        hint: 'Official DTCA/DMP ban: Rickshaws prohibited on Mirpur Road main arterial carriageway. Take Dhanmondi residential inner avenues or bus.',
+                        waypoints: [
+                            [90.3420, 23.7850], // Gabtoli
+                            [90.3662, 23.7719], // Shyamoli
+                            [90.3725, 23.7601], // Asad Gate
+                            [90.3815, 23.7482], // Kalabagan
+                            [90.3846, 23.7401], // Science Lab
+                            [90.3855, 23.7289]  // Azimpur
+                        ]
+                    },
+                    {
+                        name: 'VIP Road / Kazi Nazrul Islam Ave (Shahbagh to Mohakhali)',
+                        type: 'vip_road_ban',
+                        vehicles: 'pedal_rickshaw,battery_rickshaw',
+                        start_time: '07:00:00',
+                        end_time: '22:00:00',
+                        hint: 'Official DMP VIP arterial: Rickshaws strictly prohibited from Shahbagh to Mohakhali. Use MRT Line 6, bus, or Hatirjheel / Green Road bypass.',
+                        waypoints: [
+                            [90.3958, 23.7381], // Shahbagh
+                            [90.3945, 23.7460], // Bangla Motor
+                            [90.3934, 23.7505], // Karwan Bazar
+                            [90.3899, 23.7574], // Farmgate
+                            [90.3921, 23.7699], // Jahangir Gate
+                            [90.4043, 23.7776]  // Mohakhali
+                        ]
+                    },
+                    {
+                        name: 'Elephant Road (Science Lab to Shahbagh)',
+                        type: 'vip_road_ban',
+                        vehicles: 'pedal_rickshaw,battery_rickshaw',
+                        start_time: '07:00:00',
+                        end_time: '22:00:00',
+                        hint: 'Official DTCA/DMP ban: Rickshaws prohibited on Elephant Road thoroughfare. Use Katabon/Hatirpool side lanes.',
+                        waypoints: [
+                            [90.3846, 23.7401], // Science Lab
+                            [90.3892, 23.7408], // Katabon
+                            [90.3958, 23.7381]  // Shahbagh
+                        ]
+                    },
+                    {
+                        name: 'Moghbazar-Mouchak Flyover (Upper Deck)',
+                        type: 'flyover_ban',
+                        vehicles: 'pedal_rickshaw,battery_rickshaw',
+                        start_time: null,
+                        end_time: null,
+                        hint: 'High Court & DMP order: Rickshaws strictly prohibited on the elevated flyover deck. Must use ground surface road.',
+                        waypoints: [
+                            [90.4045, 23.7481], // Moghbazar Wireless
+                            [90.4132, 23.7485]  // Mouchak
+                        ]
+                    }
+                ];
+
+                // Fetch OSRM route for each corridor
+                const corridorData = [];
+                for (const corridor of corridors) {
+                    if (btn) {
+                        btn.textContent = `Loading ${corridor.name}...`;
+                    }
+
+                    const coords = await fetchOsrmRoute(corridor.waypoints);
+                    if (coords.length >= 2) {
+                        const polygon = bufferPolylineToPolygon(coords, 0.00018);
+                        corridorData.push({
+                            ...corridor,
+                            polygon_geojson: polygon
+                        });
+                    }
+                }
+
+                // Send all corridors to server
+                if (btn) {
+                    btn.textContent = 'Saving to Database...';
+                }
+
+                const res = await fetch('api/zones.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content },
+                    body: JSON.stringify({ action: 'create_multiple', corridors: corridorData })
+                });
+                const json = await res.json();
+
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = 'Load Precision DMP Bans';
+                }
+
+                if (json.status === 'success') {
+                    alert(`Successfully loaded ${corridorData.length} precision DMP corridors with road-following geometries!`);
+                    loadZonesTable();
+                } else {
+                    alert('Error: ' + json.message);
+                }
+            } catch (err) {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = 'Load Precision DMP Bans';
+                }
+                alert('Failed to load precision bans: ' + err.message);
+            }
+        }
+
+        // Fetch OSRM route for waypoints
+        async function fetchOsrmRoute(waypoints) {
+            const coordStrings = waypoints.map(wp => `${wp[0]},${wp[1]}`).join(';');
+            const url = `https://router.project-osrm.org/route/v1/driving/${coordStrings}?overview=full&geometries=geojson`;
+
+            const response = await fetch(url);
+            if (!response.ok) return [];
+
+            const data = await response.json();
+            return data.routes?.[0]?.geometry?.coordinates ?? [];
+        }
+
+        // Buffer polyline to polygon (corridor)
+        function bufferPolylineToPolygon(coords, halfWidth = 0.00018) {
+            const n = coords.length;
+            if (n < 2) return { type: 'Polygon', coordinates: [[]] };
+
+            const left = [];
+            const right = [];
+
+            for (let i = 0; i < n; i++) {
+                let dx, dy;
+                if (i === 0) {
+                    dx = coords[1][0] - coords[0][0];
+                    dy = coords[1][1] - coords[0][1];
+                } else if (i === n - 1) {
+                    dx = coords[n-1][0] - coords[n-2][0];
+                    dy = coords[n-1][1] - coords[n-2][1];
+                } else {
+                    dx = coords[i+1][0] - coords[i-1][0];
+                    dy = coords[i+1][1] - coords[i-1][1];
+                }
+
+                const len = Math.sqrt(dx * dx + dy * dy);
+                let nx, ny;
+                if (len < 1e-9) {
+                    nx = 0; ny = halfWidth;
+                } else {
+                    nx = -dy / len;
+                    ny = dx / len;
+                }
+
+                left.push([
+                    Math.round((coords[i][0] + nx * halfWidth) * 1e6) / 1e6,
+                    Math.round((coords[i][1] + ny * halfWidth) * 1e6) / 1e6
+                ]);
+                right.push([
+                    Math.round((coords[i][0] - nx * halfWidth) * 1e6) / 1e6,
+                    Math.round((coords[i][1] - ny * halfWidth) * 1e6) / 1e6
+                ]);
+            }
+
+            const ring = [...left, ...right.reverse()];
+            ring.push(ring[0]); // Close ring
+
+            return {
+                type: 'Polygon',
+                coordinates: [ring]
+            };
         }
 
         // Delete a specific restricted zone entry permanently
