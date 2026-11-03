@@ -74,9 +74,11 @@ CREATE TABLE `restricted_zones` (
     `active_start_time` TIME NULL,
     `active_end_time` TIME NULL,
     `polygon_geojson` JSON NOT NULL,
+    `polygon_geom` POLYGON NOT NULL DEFAULT (ST_GeomFromText('POLYGON((0 0, 0 0, 0 0, 0 0, 0 0))')), -- Spatial column for efficient queries
     `transfer_hint` VARCHAR(255) NULL,
     `is_active` BOOLEAN NOT NULL DEFAULT TRUE,
-    INDEX `idx_active` (`is_active`, `city`)
+    INDEX `idx_active` (`is_active`, `city`),
+    SPATIAL INDEX `spx_polygon_geom` (`polygon_geom`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------
@@ -158,8 +160,8 @@ VALUES
 
 -- Seed Restricted Zones (GeoJSON Polygon Coordinates in [lng, lat] order)
 -- Bijoy Sarani to Agargaon VIP Stretch (Rokeya Sarani) banning pedal_rickshaw & battery_rickshaw
-INSERT INTO `restricted_zones` 
-(`zone_name`, `city`, `restricted_vehicles`, `restriction_type`, `active_start_time`, `active_end_time`, `polygon_geojson`, `transfer_hint`, `is_active`) 
+INSERT INTO `restricted_zones`
+(`zone_name`, `city`, `restricted_vehicles`, `restriction_type`, `active_start_time`, `active_end_time`, `polygon_geojson`, `polygon_geom`, `transfer_hint`, `is_active`)
 VALUES
 (
     'Bijoy Sarani to Agargaon VIP Stretch (Rokeya Sarani)',
@@ -169,6 +171,7 @@ VALUES
     '07:00:00',
     '22:00:00',
     '{"type":"Polygon","coordinates":[[[90.3885,23.7635],[90.3905,23.7635],[90.3830,23.7785],[90.3810,23.7785],[90.3885,23.7635]]]}',
+    ST_GeomFromGeoJSON('{"type":"Polygon","coordinates":[[[90.3885,23.7635],[90.3905,23.7635],[90.3830,23.7785],[90.3810,23.7785],[90.3885,23.7635]]]}'),
     'Rickshaws strictly banned on VIP Rokeya Sarani stretch (Bijoy Sarani to Agargaon). Commuters must switch to MRT Line 6, bus, or take alternate side lanes via Monipur/West Kafrul.',
     1
 ),
@@ -180,6 +183,7 @@ VALUES
     NULL,
     NULL,
     '{"type":"Polygon","coordinates":[[[90.4040,23.7480],[90.4060,23.7485],[90.4130,23.7440],[90.4115,23.7425],[90.4040,23.7480]]]}',
+    ST_GeomFromGeoJSON('{"type":"Polygon","coordinates":[[[90.4040,23.7480],[90.4060,23.7485],[90.4130,23.7440],[90.4115,23.7425],[90.4040,23.7480]]]}'),
     'Rickshaws are prohibited on the upper deck of Moghbazar-Mouchak flyover. Commuters must use the surface level road.',
     1
 );
