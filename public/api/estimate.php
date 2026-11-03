@@ -15,6 +15,10 @@ require_once __DIR__ . '/../../config/config.php';
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../src/FareEstimatorService.php';
 require_once __DIR__ . '/../../src/CsrfProtection.php';
+require_once __DIR__ . '/../../src/RateLimiter.php';
+
+// Rate limiting: 30 requests per minute per IP
+RateLimiter::enforce('estimate', 30, 60);
 
 try {
     // Validate CSRF token for POST requests

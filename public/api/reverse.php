@@ -13,6 +13,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 require_once __DIR__ . '/../../config/config.php';
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../src/RateLimiter.php';
+
+// Rate limiting: 60 requests per minute per IP for reverse geocoding
+RateLimiter::enforce('reverse', 60, 60);
 
 try {
     $lat = filter_var($_GET['lat'] ?? null, FILTER_VALIDATE_FLOAT);
