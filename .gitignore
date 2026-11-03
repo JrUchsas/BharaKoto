@@ -1,6 +1,9 @@
 # Vendor dependencies
 /vendor/
 
+# Temporary / cache storage
+/storage/
+
 # Environment files
 .env
 .env.local
