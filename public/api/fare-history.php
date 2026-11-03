@@ -13,6 +13,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 require_once __DIR__ . '/../../config/config.php';
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../src/RateLimiter.php';
+
+// Rate limiting: 30 requests per minute per IP for fare history
+RateLimiter::enforce('fare-history', 30, 60);
 
 try {
     $pdo = Database::getConnection();
