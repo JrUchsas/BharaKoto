@@ -463,7 +463,7 @@ $csrfToken = CsrfProtection::getToken();
             try {
                 const res = await fetch('api/zones.php', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content },
                     body: JSON.stringify(payload)
                 });
                 const json = await res.json();
@@ -489,7 +489,7 @@ $csrfToken = CsrfProtection::getToken();
             try {
                 const res = await fetch('api/zones.php', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content },
                     body: JSON.stringify({ action: 'toggle', id: id })
                 });
                 const json = await res.json();
@@ -509,7 +509,7 @@ $csrfToken = CsrfProtection::getToken();
             try {
                 const res = await fetch('api/zones.php', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content },
                     body: JSON.stringify({ action: 'deactivate_all' })
                 });
                 const json = await res.json();
@@ -725,7 +725,7 @@ $csrfToken = CsrfProtection::getToken();
             try {
                 const res = await fetch('api/zones.php', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content },
                     body: JSON.stringify({ action: 'delete', id: id })
                 });
                 const json = await res.json();
@@ -747,7 +747,7 @@ $csrfToken = CsrfProtection::getToken();
             try {
                 const res = await fetch('api/zones.php', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content },
                     body: JSON.stringify({ action: 'delete_inactive' })
                 });
                 const json = await res.json();

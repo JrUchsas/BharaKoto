@@ -1,3 +1,9 @@
+<?php
+require_once __DIR__ . '/../config/config.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../src/CsrfProtection.php';
+$csrfToken = CsrfProtection::getToken();
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,6 +16,7 @@
     <meta http-equiv="X-XSS-Protection" content="1; mode=block">
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; script-src 'self' https: 'unsafe-inline' 'unsafe-eval'; style-src 'self' https: 'unsafe-inline'; font-src 'self' https: data:; img-src 'self' https: data: blob:; connect-src 'self' https:;">
+    <meta name="csrf-token" content="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES); ?>">
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -465,6 +472,7 @@
             </div>
 
             <form id="submitFareForm" onsubmit="handlePaidFareSubmit(event)" class="space-y-3 text-xs">
+                <input type="hidden" name="csrf_token" id="modalCsrfToken" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES); ?>" />
                 <div>
                     <label class="block font-semibold text-slate-700 mb-1">Vehicle Taken</label>
                     <select id="modalVehicle" class="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-bdgreen-500">
@@ -545,6 +553,13 @@
             setupAutocomplete('originInput', 'originSuggestions', 'originLat', 'originLng', 'origin');
             setupAutocomplete('destInput', 'destSuggestions', 'destLat', 'destLng', 'dest');
             updateClearUIState();
+
+            // Set CSRF token for modal form from meta tag
+            const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+            if (csrfMeta) {
+                const modalToken = document.getElementById('modalCsrfToken');
+                if (modalToken) modalToken.value = csrfMeta.content;
+            }
         });
 
         // Initialize Leaflet Map
@@ -1534,6 +1549,9 @@
             submitBtn.disabled = true;
             submitBtn.textContent = 'Saving...';
 
+            const csrfToken = document.getElementById('modalCsrfToken')?.value ||
+                document.querySelector('meta[name="csrf-token"]')?.content || '';
+
             const payload = {
                 vehicle_type: document.getElementById('modalVehicle').value,
                 origin_name: document.getElementById('modalOrigin').value,
@@ -1545,13 +1563,14 @@
                 fare_paid_bdt: parseFloat(document.getElementById('modalFare').value),
                 weather_condition: document.getElementById('modalWeather').value,
                 traffic_condition: document.getElementById('modalTraffic').value,
-                phone: document.getElementById('modalPhone').value
+                phone: document.getElementById('modalPhone').value,
+                csrf_token: csrfToken
             };
 
             try {
                 const res = await fetch('api/crowdsourced.php', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
                     body: JSON.stringify(payload)
                 });
                 const json = await res.json();
