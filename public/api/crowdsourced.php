@@ -123,6 +123,16 @@ try {
         $phone = trim((string)($data['phone'] ?? ''));
         $name  = trim((string)($data['name'] ?? 'Anonymous Commuter'));
 
+        // Validate Bangladeshi phone number format (01X-XXXXXXXX)
+        if ($phone !== '' && !preg_match('/^01[3-9]\d{8}$/', $phone)) {
+            http_response_code(400);
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'Invalid phone number format. Use Bangladeshi format: 01XXXXXXXXX'
+            ]);
+            exit;
+        }
+
         if ($originLat === false || $originLng === false || $destLat === false || $destLng === false || $farePaid === false || $farePaid <= 0) {
             http_response_code(400);
             echo json_encode([

@@ -108,6 +108,56 @@ try {
             exit;
         }
 
+        // Create multiple precision corridors from OSRM
+        if (isset($data['action']) && $data['action'] === 'create_multiple') {
+            $corridors = $data['corridors'] ?? [];
+            if (!is_array($corridors) || empty($corridors)) {
+                http_response_code(400);
+                echo json_encode(['status' => 'error', 'message' => 'No corridors provided.']);
+                exit;
+            }
+
+            $insertStmt = $pdo->prepare("
+                INSERT INTO `restricted_zones`
+                (`zone_name`, `city`, `restricted_vehicles`, `restriction_type`, `active_start_time`, `active_end_time`, `polygon_geojson`, `transfer_hint`, `is_active`)
+                VALUES
+                (:name, 'Dhaka', :vehicles, :type, :start_t, :end_t, :geojson, :hint, 1)
+            ");
+
+            $created = 0;
+            foreach ($corridors as $corridor) {
+                $name = trim((string)($corridor['name'] ?? ''));
+                if ($name === '') continue;
+
+                $vehicles = trim((string)($corridor['vehicles'] ?? 'pedal_rickshaw,battery_rickshaw'));
+                $type = trim((string)($corridor['type'] ?? 'vip_road_ban'));
+                $startTime = $corridor['start_time'] ?? null;
+                $endTime = $corridor['end_time'] ?? null;
+                $hint = trim((string)($corridor['hint'] ?? ''));
+                $polygon = $corridor['polygon_geojson'] ?? null;
+
+                if (!$polygon || !isset($polygon['type']) || $polygon['type'] !== 'Polygon') continue;
+
+                $insertStmt->execute([
+                    ':name' => $name,
+                    ':vehicles' => $vehicles,
+                    ':type' => $type,
+                    ':start_t' => $startTime,
+                    ':end_t' => $endTime,
+                    ':geojson' => json_encode($polygon, JSON_UNESCAPED_SLASHES),
+                    ':hint' => $hint !== '' ? $hint : null,
+                ]);
+                $created++;
+            }
+
+            echo json_encode([
+                'status' => 'success',
+                'message' => "Successfully created {$created} precision DMP corridors with road-following geometries.",
+                'count' => $created
+            ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+            exit;
+        }
+
         // Validation for new zone
         $zoneName = trim((string)($data['zone_name'] ?? ''));
         $city = trim((string)($data['city'] ?? 'Dhaka'));
