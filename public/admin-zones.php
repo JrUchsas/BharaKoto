@@ -361,15 +361,19 @@ $csrfToken = CsrfProtection::getToken();
 
         // Load Zones for Map and Table
         async function loadZonesTable() {
+            const tbody = document.getElementById('zonesTableBody');
             try {
                 const res = await fetch('api/zones.php?all=1');
                 const data = await res.json();
                 if (data.status === 'success' && Array.isArray(data.data)) {
                     renderZonesOnMap(data.data);
                     renderZonesTable(data.data);
+                } else {
+                    if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-rose-500 font-medium">Failed to load zones: ' + escapeHtml(data.message || 'Server error') + '</td></tr>';
                 }
             } catch (err) {
                 console.error(err);
+                if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-rose-500 font-medium">Error loading zones: ' + escapeHtml(err.message) + '</td></tr>';
             }
         }
 
@@ -378,36 +382,51 @@ $csrfToken = CsrfProtection::getToken();
             existingZonesLayer.clearLayers();
             zones.forEach(zone => {
                 if (zone.polygon_geojson && parseInt(zone.is_active) === 1) {
-                    const poly = L.geoJSON(zone.polygon_geojson, {
-                        style: {
-                            color: '#b91c1c',
-                            weight: 2.5,
-                            fillColor: '#ef4444',
-                            fillOpacity: 0.45
+                    let geojson = zone.polygon_geojson;
+                    if (typeof geojson === 'string') {
+                        try {
+                            geojson = JSON.parse(geojson);
+                        } catch (e) {
+                            console.error('Failed to parse polygon_geojson for zone', zone.id, e);
+                            return;
                         }
-                    });
-                    poly.bindTooltip(`🚫 <b>${escapeHtml(zone.zone_name)}</b>`, { sticky: true });
-                    poly.bindPopup(`
-                        <div class="text-xs space-y-1.5 p-1 min-w-[200px]">
-                            <div class="font-bold text-red-700 flex items-center justify-between">
-                                <span>🚫 ${escapeHtml(zone.zone_name)}</span>
-                                <span class="text-[10px] bg-red-100 text-red-800 px-1.5 py-0.2 rounded font-bold">Active</span>
+                    }
+                    try {
+                        const poly = L.geoJSON(geojson, {
+                            style: {
+                                color: '#b91c1c',
+                                weight: 2.5,
+                                fillColor: '#ef4444',
+                                fillOpacity: 0.45
+                            }
+                        });
+                        poly.bindTooltip(`🚫 <b>${escapeHtml(zone.zone_name)}</b>`, { sticky: true });
+                        const safeName = escapeHtml(zone.zone_name).replace(/'/g, "\\'");
+                        const bannedVehicles = escapeHtml(String(zone.restricted_vehicles || '').replace(/,/g, ', '));
+                        poly.bindPopup(`
+                            <div class="text-xs space-y-1.5 p-1 min-w-[200px]">
+                                <div class="font-bold text-red-700 flex items-center justify-between">
+                                    <span>🚫 ${escapeHtml(zone.zone_name)}</span>
+                                    <span class="text-[10px] bg-red-100 text-red-800 px-1.5 py-0.2 rounded font-bold">Active</span>
+                                </div>
+                                <div><b>Banned:</b> ${bannedVehicles}</div>
+                                ${zone.active_start_time ? `<div><b>Hours:</b> ${zone.active_start_time} - ${zone.active_end_time}</div>` : ''}
+                                ${zone.transfer_hint ? `<div class="bg-red-50 text-red-800 p-1.5 rounded text-[11px] mt-1">${escapeHtml(zone.transfer_hint)}</div>` : ''}
+                                <div class="flex items-center gap-2 pt-1.5 border-t border-slate-100 mt-2">
+                                    <button onclick="toggleZoneStatus(${zone.id})" class="px-2 py-1 text-[11px] rounded font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer">
+                                        Deactivate
+                                    </button>
+                                    <button onclick="deleteZoneEntry(${zone.id}, '${safeName}')" class="px-2 py-1 text-[11px] rounded font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition flex items-center gap-1 cursor-pointer">
+                                        <svg class="w-3 h-3 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                        <span>Delete</span>
+                                    </button>
+                                </div>
                             </div>
-                            <div><b>Banned:</b> ${escapeHtml(zone.restricted_vehicles.replace(/,/g, ', '))}</div>
-                            ${zone.active_start_time ? `<div><b>Hours:</b> ${zone.active_start_time} - ${zone.active_end_time}</div>` : ''}
-                            ${zone.transfer_hint ? `<div class="bg-red-50 text-red-800 p-1.5 rounded text-[11px] mt-1">${escapeHtml(zone.transfer_hint)}</div>` : ''}
-                            <div class="flex items-center gap-2 pt-1.5 border-t border-slate-100 mt-2">
-                                <button onclick="toggleZoneStatus(${zone.id})" class="px-2 py-1 text-[11px] rounded font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer">
-                                    Deactivate
-                                </button>
-                                <button onclick="deleteZoneEntry(${zone.id}, '${escapeHtml(zone.zone_name)}')" class="px-2 py-1 text-[11px] rounded font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition flex items-center gap-1 cursor-pointer">
-                                    <svg class="w-3 h-3 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                    <span>Delete</span>
-                                </button>
-                            </div>
-                        </div>
-                    `);
-                    existingZonesLayer.addLayer(poly);
+                        `);
+                        existingZonesLayer.addLayer(poly);
+                    } catch (e) {
+                        console.error('Error adding layer for zone', zone.id, e);
+                    }
                 }
             });
         }
@@ -425,15 +444,17 @@ $csrfToken = CsrfProtection::getToken();
                 const tr = document.createElement('tr');
                 tr.className = 'hover:bg-slate-50 transition';
                 const isActive = parseInt(z.is_active) === 1;
+                const safeName = escapeHtml(z.zone_name).replace(/'/g, "\\'");
+                const bannedVehicles = escapeHtml(String(z.restricted_vehicles || '').replace(/,/g, ', '));
 
                 tr.innerHTML = `
                     <td class="px-4 py-3">
                         <div class="font-bold text-slate-900">${escapeHtml(z.zone_name)}</div>
-                        <div class="text-[10px] text-slate-400">${escapeHtml(z.city)} • ${escapeHtml(z.restriction_type)}</div>
+                        <div class="text-[10px] text-slate-400">${escapeHtml(z.city || 'Dhaka')} • ${escapeHtml(z.restriction_type || 'Ban')}</div>
                     </td>
                     <td class="px-4 py-3">
                         <span class="inline-block bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] font-medium">
-                            ${escapeHtml(z.restricted_vehicles.replace(/,/g, ', '))}
+                            ${bannedVehicles}
                         </span>
                     </td>
                     <td class="px-4 py-3 text-slate-500 text-[11px]">
@@ -449,7 +470,7 @@ $csrfToken = CsrfProtection::getToken();
                             <button onclick="toggleZoneStatus(${z.id})" class="px-2.5 py-1 text-[11px] rounded font-semibold border ${isActive ? 'border-amber-300 text-amber-700 hover:bg-amber-50' : 'border-emerald-300 text-emerald-700 hover:bg-emerald-50'} transition cursor-pointer">
                                 ${isActive ? 'Deactivate' : 'Activate'}
                             </button>
-                            <button onclick="deleteZoneEntry(${z.id}, '${escapeHtml(z.zone_name)}')" class="px-2 py-1 text-[11px] rounded font-semibold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition flex items-center gap-1 cursor-pointer shadow-2xs" title="Permanently delete this ban entry">
+                            <button onclick="deleteZoneEntry(${z.id}, '${safeName}')" class="px-2 py-1 text-[11px] rounded font-semibold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition flex items-center gap-1 cursor-pointer shadow-2xs" title="Permanently delete this ban entry">
                                 <svg class="w-3 h-3 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                 <span>Delete</span>
                             </button>

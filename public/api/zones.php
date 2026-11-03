@@ -27,7 +27,7 @@ try {
     // ----------------------------------------------------
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $includeInactive = isset($_GET['all']) && (int)$_GET['all'] === 1;
-        $sql = "SELECT * FROM `restricted_zones` " . ($includeInactive ? "" : "WHERE `is_active` = 1 ") . "ORDER BY `id` DESC";
+        $sql = "SELECT `id`, `zone_name`, `city`, `restricted_vehicles`, `restriction_type`, `active_start_time`, `active_end_time`, `polygon_geojson`, `transfer_hint`, `is_active` FROM `restricted_zones` " . ($includeInactive ? "" : "WHERE `is_active` = 1 ") . "ORDER BY `id` DESC";
         $stmt = $pdo->query($sql);
         $rows = $stmt->fetchAll();
 
