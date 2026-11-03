@@ -301,11 +301,11 @@ Where:
 - $M_{\text{rain}} = \text{Rain Multiplier}$ if raining / waterlogged, otherwise $1.0$.
 
 #### C. The 5-Taka Bangladesh Rounding Rule
-$$\text{Street Fare} = \max\left(\text{Base Fare},\; \operatorname{round}\left(\frac{\text{Raw Street Fare}}{5}\right) \times 5\right)$$
+$$\text{Street Fare} = \max\left(\text{Base Fare},\; \text{round}\left(\frac{\text{Raw Street Fare}}{5}\right) \times 5\right)$$
 
 #### D. Bargaining Brackets
-$$\text{Min Bargain} = \max\left(\text{Base Fare},\; \operatorname{round}\left(\frac{\text{Street Fare} \times 0.90}{5}\right) \times 5\right)$$
-$$\text{Max Bargain} = \max\left(\text{Street Fare} + 5,\; \operatorname{round}\left(\frac{\text{Street Fare} \times 1.15}{5}\right) \times 5\right)$$
+$$\text{Min Bargain} = \max\left(\text{Base Fare},\; \text{round}\left(\frac{\text{Street Fare} \times 0.90}{5}\right) \times 5\right)$$
+$$\text{Max Bargain} = \max\left(\text{Street Fare} + 5,\; \text{round}\left(\frac{\text{Street Fare} \times 1.15}{5}\right) \times 5\right)$$
 
 ---
 

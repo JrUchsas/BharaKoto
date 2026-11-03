@@ -1,0 +1,26 @@
+{
+    "name": "bharakoto/fare-estimator",
+    "description": "BD CNG, Rickshaw & Commuter Fare and Route Estimator for Dhaka, Bangladesh",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.1"
+    },
+    "autoload": {
+        "classmap": [
+            "src/",
+            "config/"
+        ]
+    },
+    "config": {
+        "process-timeout": 0
+    },
+    "scripts": {
+        "dev": "php -S localhost:8000 -t public",
+        "start": "php -S localhost:8000 -t public",
+        "migrate": "php database/migrate.php",
+        "seed-bans": "php database/apply_official_dmp_bans.php",
+        "seed-nodes": "php database/seed_expanded_nodes.php",
+        "seed-badda": "php database/seed_badda_nodes.php"
+    }
+}
