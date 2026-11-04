@@ -373,40 +373,11 @@ final class FareEstimatorService
         string $vehicleType,
         array $intersectingZones
     ): ?array {
-        $detourNeeded = !empty($intersectingZones);
-
-        // Build coordinates query in lng,lat format
-        $coordPairs = [];
-        $coordPairs[] = sprintf('%.6f,%.6f', $originLng, $originLat);
-
-        if ($detourNeeded) {
-            // Calculate detour waypoint bypassing the restricted polygon
-            $zone = $intersectingZones[0];
-            $rawJson = $zone['polygon_geojson'];
-            $decoded = is_string($rawJson) ? json_decode($rawJson, true) : $rawJson;
-            $coords = $decoded['type'] === 'Polygon'
-                ? ($decoded['coordinates'][0] ?? [])
-                : ($decoded['coordinates'][0][0] ?? []);
-
-            $minLng = 180.0; $maxLng = -180.0;
-            $minLat = 90.0;  $maxLat = -90.0;
-            foreach ($coords as $pt) {
-                $lng = (float)$pt[0];
-                $lat = (float)$pt[1];
-                if ($lng < $minLng) $minLng = $lng;
-                if ($lng > $maxLng) $maxLng = $lng;
-                if ($lat < $minLat) $minLat = $lat;
-                if ($lat > $maxLat) $maxLat = $lat;
-            }
-
-            // Route via West Kafrul / Taltola bypass to the west of Rokeya Sarani
-            $detourLng = $minLng - 0.0075;
-            $detourLat = ($minLat + $maxLat) / 2.0;
-
-            $coordPairs[] = sprintf('%.6f,%.6f', $detourLng, $detourLat);
-        }
-
-        $coordPairs[] = sprintf('%.6f,%.6f', $destLng, $destLat);
+        // Build coordinates query in lng,lat format directly between Origin and Destination
+        $coordPairs = [
+            sprintf('%.6f,%.6f', $originLng, $originLat),
+            sprintf('%.6f,%.6f', $destLng, $destLat)
+        ];
 
         // Try driving profile first (robustly covers all paved roads, avenues & connectors in Dhaka)
         $url = sprintf(
