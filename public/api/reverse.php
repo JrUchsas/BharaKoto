@@ -37,8 +37,8 @@ try {
     $stmt = $pdo->prepare("
         SELECT name_en, name_bn, area_thana, latitude, longitude,
                (6371 * ACOS(LEAST(1.0, GREATEST(-1.0, 
-                   COS(RADIANS(:lat)) * COS(RADIANS(latitude)) * COS(RADIANS(longitude) - RADIANS(:lng)) + 
-                   SIN(RADIANS(:lat)) * SIN(RADIANS(latitude))
+                   COS(RADIANS(:lat1)) * COS(RADIANS(latitude)) * COS(RADIANS(longitude) - RADIANS(:lng)) + 
+                   SIN(RADIANS(:lat2)) * SIN(RADIANS(latitude))
                )))) AS distance_km
         FROM popular_nodes
         HAVING distance_km <= 0.60
@@ -47,8 +47,9 @@ try {
     ");
 
     $stmt->execute([
-        ':lat' => $lat,
-        ':lng' => $lng
+        ':lat1' => $lat,
+        ':lng'  => $lng,
+        ':lat2' => $lat
     ]);
 
     $localNode = $stmt->fetch();
@@ -79,7 +80,8 @@ try {
     $ch = curl_init($osmUrl);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 3,
+        CURLOPT_TIMEOUT => 4,
+        CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_USERAGENT => 'BharaKoto-Dhaka-FareEstimator/1.0 (contact@bharakoto.bd)'
     ]);
     $resp = curl_exec($ch);
@@ -113,19 +115,55 @@ try {
         }
     }
 
-    // 3. Fallback generic display name
+    // 3. Fallback to nearest local landmark in Dhaka
+    try {
+        $stmtNear = $pdo->prepare("
+            SELECT name_en, name_bn, area_thana, latitude, longitude,
+                   (6371 * ACOS(LEAST(1.0, GREATEST(-1.0, 
+                       COS(RADIANS(:lat1)) * COS(RADIANS(latitude)) * COS(RADIANS(longitude) - RADIANS(:lng)) + 
+                       SIN(RADIANS(:lat2)) * SIN(RADIANS(latitude))
+                   )))) AS distance_km
+            FROM popular_nodes
+            ORDER BY distance_km ASC
+            LIMIT 1
+        ");
+        $stmtNear->execute([
+            ':lat1' => $lat,
+            ':lng'  => $lng,
+            ':lat2' => $lat
+        ]);
+        $nearNode = $stmtNear->fetch();
+        if ($nearNode) {
+            $displayName = "Near {$nearNode['name_en']}" . (!empty($nearNode['area_thana']) ? ", {$nearNode['area_thana']}" : ', Dhaka');
+            echo json_encode([
+                'status' => 'success',
+                'data' => [
+                    'display_name' => $displayName,
+                    'name_en' => $displayName,
+                    'name_bn' => $nearNode['name_bn'],
+                    'area_thana' => $nearNode['area_thana'] ?: 'Dhaka',
+                    'latitude' => $lat,
+                    'longitude' => $lng,
+                    'source' => 'nearest_landmark'
+                ]
+            ], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+    } catch (Throwable $ignore) {}
+
+    // 4. Absolute fallback
     echo json_encode([
         'status' => 'success',
         'data' => [
-            'display_name' => sprintf('Location (%.4f, %.4f)', $lat, $lng),
-            'name_en' => sprintf('Location (%.4f, %.4f)', $lat, $lng),
-            'name_bn' => '',
+            'display_name' => 'Dhaka City Point',
+            'name_en' => 'Dhaka City Point',
+            'name_bn' => 'ঢাকা শহর',
             'area_thana' => 'Dhaka',
             'latitude' => $lat,
             'longitude' => $lng,
-            'source' => 'coordinates'
+            'source' => 'city_fallback'
         ]
-    ]);
+    ], JSON_UNESCAPED_UNICODE);
 
 } catch (Throwable $e) {
     http_response_code(500);

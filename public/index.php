@@ -545,6 +545,7 @@ $csrfToken = CsrfProtection::getToken();
         let routeLayer = null;
         let zonesLayerGroup = null;
         let activeMapPickingMode = null; // 'origin' or 'dest'
+        let customPickingName = null;
 
         // Initialize App on DOM Load
         document.addEventListener('DOMContentLoaded', () => {
@@ -560,6 +561,9 @@ $csrfToken = CsrfProtection::getToken();
                 const modalToken = document.getElementById('modalCsrfToken');
                 if (modalToken) modalToken.value = csrfMeta.content;
             }
+
+            // Restore persisted points, markers, vehicle, and route from localStorage
+            restoreAppState();
         });
 
         // Initialize Leaflet Map
@@ -606,38 +610,70 @@ $csrfToken = CsrfProtection::getToken();
                 } catch (err) {}
 
                 if (activeMapPickingMode === 'origin') {
-                    setOriginCoords(lat, lng, resolvedName);
+                    const finalName = customPickingName || resolvedName;
+                    setOriginCoords(lat, lng, finalName);
                     exitMapPickingMode();
                 } else if (activeMapPickingMode === 'dest') {
-                    setDestCoords(lat, lng, resolvedName);
+                    const finalName = customPickingName || resolvedName;
+                    setDestCoords(lat, lng, finalName);
                     exitMapPickingMode();
                 } else {
-                    // Always show choice popup when no active picking mode
-                    // (lets user explicitly choose Origin or Destination on first click)
+                    // Choice popup when clicking map directly
                     const hasOrigin = originMarker !== null;
                     const hasDest = destMarker !== null;
 
                     const popupContent = document.createElement('div');
                     popupContent.className = 'p-1 text-xs space-y-2 min-w-[200px]';
-                    let buttonsHtml = '';
+
+                    const titleDiv = document.createElement('div');
+                    titleDiv.className = 'font-bold text-slate-800 flex items-center gap-1';
+                    titleDiv.textContent = resolvedName;
+
+                    const coordsDiv = document.createElement('div');
+                    coordsDiv.className = 'text-[11px] text-slate-500 font-mono';
+                    coordsDiv.textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+
+                    const btnContainer = document.createElement('div');
+                    btnContainer.className = 'flex flex-col gap-1.5 pt-1 border-t border-slate-100';
 
                     if (!hasOrigin) {
-                        buttonsHtml += `<button onclick="setOriginCoords(${lat}, ${lng}, '${escapeHtml(resolvedName)}'); map.closePopup();" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-medium text-xs w-full flex items-center justify-center gap-1.5"><span>🟢</span> Set as Origin</button>`;
+                        const oBtn = document.createElement('button');
+                        oBtn.type = 'button';
+                        oBtn.className = 'px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-medium text-xs w-full flex items-center justify-center gap-1.5 cursor-pointer shadow-sm';
+                        oBtn.innerHTML = '<span>🟢</span> Set as Origin';
+                        oBtn.onclick = () => {
+                            setOriginCoords(lat, lng, resolvedName);
+                            map.closePopup();
+                        };
+                        btnContainer.appendChild(oBtn);
                     }
                     if (!hasDest) {
-                        buttonsHtml += `<button onclick="setDestCoords(${lat}, ${lng}, '${escapeHtml(resolvedName)}'); map.closePopup();" class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded font-medium text-xs w-full flex items-center justify-center gap-1.5"><span>🔴</span> Set as Destination</button>`;
+                        const dBtn = document.createElement('button');
+                        dBtn.type = 'button';
+                        dBtn.className = 'px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded font-medium text-xs w-full flex items-center justify-center gap-1.5 cursor-pointer shadow-sm';
+                        dBtn.innerHTML = '<span>🔴</span> Set as Destination';
+                        dBtn.onclick = () => {
+                            setDestCoords(lat, lng, resolvedName);
+                            map.closePopup();
+                        };
+                        btnContainer.appendChild(dBtn);
                     }
                     if (hasOrigin || hasDest) {
-                        buttonsHtml += `<button onclick="clearAllRoutePoints(); map.closePopup();" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded font-semibold text-xs w-full flex items-center justify-center gap-1.5"><svg class="w-3.5 h-3.5 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg> Clear All Points</button>`;
+                        const cBtn = document.createElement('button');
+                        cBtn.type = 'button';
+                        cBtn.className = 'px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded font-semibold text-xs w-full flex items-center justify-center gap-1.5 cursor-pointer transition';
+                        cBtn.innerHTML = '<svg class="w-3.5 h-3.5 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg> Clear All Points';
+                        cBtn.onclick = () => {
+                            clearAllRoutePoints();
+                            map.closePopup();
+                        };
+                        btnContainer.appendChild(cBtn);
                     }
 
-                    popupContent.innerHTML = `
-                        <div class="font-bold text-slate-800 flex items-center gap-1">${escapeHtml(resolvedName)}</div>
-                        <div class="text-[11px] text-slate-500">${lat.toFixed(4)}, ${lng.toFixed(4)}</div>
-                        <div class="flex flex-col gap-1.5 pt-1 border-t border-slate-100">
-                            ${buttonsHtml}
-                        </div>
-                    `;
+                    popupContent.appendChild(titleDiv);
+                    popupContent.appendChild(coordsDiv);
+                    popupContent.appendChild(btnContainer);
+
                     L.popup().setLatLng(e.latlng).setContent(popupContent).openOn(map);
                 }
             });
@@ -738,6 +774,7 @@ $csrfToken = CsrfProtection::getToken();
             if (!isNaN(oLat) && !isNaN(dLat)) {
                 calculateFareEstimate(false);
             }
+            saveAppState();
         }
 
 
@@ -824,6 +861,7 @@ $csrfToken = CsrfProtection::getToken();
                     originMarker.openPopup();
                 }
             }
+            saveAppState();
         }
 
         // Set Destination Coordinates and Marker (Round Red Button)
@@ -867,6 +905,7 @@ $csrfToken = CsrfProtection::getToken();
                     destMarker.openPopup();
                 }
             }
+            saveAppState();
         }
 
 
@@ -890,6 +929,7 @@ $csrfToken = CsrfProtection::getToken();
             document.getElementById('resultsCard')?.classList.add('hidden');
             document.getElementById('vipWarningAlert')?.classList.add('hidden');
             updateClearUIState();
+            saveAppState();
         }
 
         // Clear Destination from map & inputs
@@ -922,6 +962,8 @@ $csrfToken = CsrfProtection::getToken();
             if (map) {
                 map.closePopup();
             }
+            try { localStorage.removeItem('bharakoto_app_state'); } catch(e) {}
+            saveAppState();
         }
 
         // Swap Origin & Destination
@@ -954,6 +996,7 @@ $csrfToken = CsrfProtection::getToken();
             if (hasDest && hasOrig) {
                 calculateFareEstimate();
             }
+            saveAppState();
         }
 
         // Synchronize Visibility of all Clear Buttons (badges, inputs, map toolbar)
@@ -992,6 +1035,7 @@ $csrfToken = CsrfProtection::getToken();
 
         function exitMapPickingMode() {
             activeMapPickingMode = null;
+            customPickingName = null;
             document.getElementById('mapPickingIndicator').classList.add('hidden');
         }
 
@@ -1088,6 +1132,7 @@ $csrfToken = CsrfProtection::getToken();
         }
 
         function activateCustomMapPicker(mode, customName) {
+            customPickingName = customName;
             if (mode === 'origin') {
                 document.getElementById('originInput').value = customName;
                 activateMapPicker('origin');
@@ -1540,6 +1585,80 @@ $csrfToken = CsrfProtection::getToken();
                 `;
                 tbody.appendChild(tr);
             });
+        }
+
+
+        // Save user-selected points, vehicle, and condition toggles to localStorage
+        function saveAppState() {
+            try {
+                const oLat = document.getElementById('originLat')?.value || '';
+                const oLng = document.getElementById('originLng')?.value || '';
+                const oName = document.getElementById('originInput')?.value || '';
+
+                const dLat = document.getElementById('destLat')?.value || '';
+                const dLng = document.getElementById('destLng')?.value || '';
+                const dName = document.getElementById('destInput')?.value || '';
+
+                const state = {
+                    origin: { lat: oLat, lng: oLng, name: oName },
+                    dest: { lat: dLat, lng: dLng, name: dName },
+                    vehicle: document.getElementById('selectedVehicle')?.value || 'pedal_rickshaw',
+                    isPeak: document.getElementById('peakHourToggle')?.checked || false,
+                    isRain: document.getElementById('rainToggle')?.checked || false
+                };
+                localStorage.setItem('bharakoto_app_state', JSON.stringify(state));
+            } catch (err) {
+                console.error('Failed to save app state:', err);
+            }
+        }
+
+        // Restore persisted points, markers, and calculated route from localStorage
+        function restoreAppState() {
+            try {
+                const raw = localStorage.getItem('bharakoto_app_state');
+                if (!raw) return;
+                const state = JSON.parse(raw);
+
+                if (state.vehicle) {
+                    selectVehicle(state.vehicle);
+                }
+                if (state.isPeak !== undefined && document.getElementById('peakHourToggle')) {
+                    document.getElementById('peakHourToggle').checked = Boolean(state.isPeak);
+                }
+                if (state.isRain !== undefined && document.getElementById('rainToggle')) {
+                    document.getElementById('rainToggle').checked = Boolean(state.isRain);
+                }
+
+                const oLat = parseFloat(state.origin?.lat);
+                const oLng = parseFloat(state.origin?.lng);
+                const oName = state.origin?.name || '';
+
+                const dLat = parseFloat(state.dest?.lat);
+                const dLng = parseFloat(state.dest?.lng);
+                const dName = state.dest?.name || '';
+
+                const hasOrigin = !isNaN(oLat) && !isNaN(oLng);
+                const hasDest = !isNaN(dLat) && !isNaN(dLng);
+
+                if (hasOrigin) {
+                    setOriginCoords(oLat, oLng, oName, false);
+                }
+                if (hasDest) {
+                    setDestCoords(dLat, dLng, dName, false);
+                }
+
+                if (hasOrigin && hasDest) {
+                    const bounds = L.latLngBounds([[oLat, oLng], [dLat, dLng]]);
+                    map.fitBounds(bounds, { padding: [70, 70], maxZoom: 16 });
+                    calculateFareEstimate(false);
+                } else if (hasOrigin) {
+                    map.setView([oLat, oLng], 15);
+                } else if (hasDest) {
+                    map.setView([dLat, dLng], 15);
+                }
+            } catch (err) {
+                console.error('Failed to restore app state:', err);
+            }
         }
 
         // Call loadFareHistory after successful estimate
