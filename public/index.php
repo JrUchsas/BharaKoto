@@ -247,7 +247,7 @@ $csrfToken = CsrfProtection::getToken();
                         </label>
                         <label class="flex items-center gap-2 cursor-pointer">
                             <input type="checkbox" id="rainToggle" onchange="calculateFareEstimate(false)" class="rounded text-bdgreen-600 focus:ring-bdgreen-500 w-4 h-4 cursor-pointer" />
-                            <span class="font-medium text-slate-700">Rain/বৃষ্টি (+৫০%)</span>
+                            <span class="font-medium text-slate-700">Rain (বৃষ্টি +৫০%)</span>
                         </label>
                     </div>
 
