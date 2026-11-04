@@ -243,11 +243,11 @@ $csrfToken = CsrfProtection::getToken();
                     <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between text-xs">
                         <label class="flex items-center gap-2 cursor-pointer">
                             <input type="checkbox" id="peakHourToggle" onchange="calculateFareEstimate(false)" class="rounded text-bdgreen-600 focus:ring-bdgreen-500 w-4 h-4 cursor-pointer" />
-                            <span class="font-medium text-slate-700">Peak Hour (পিক আওয়ার +২০%)</span>
+                            <span class="font-medium text-slate-700">Peak Hour/পিক আওয়ার (+২০%)</span>
                         </label>
                         <label class="flex items-center gap-2 cursor-pointer">
                             <input type="checkbox" id="rainToggle" onchange="calculateFareEstimate(false)" class="rounded text-bdgreen-600 focus:ring-bdgreen-500 w-4 h-4 cursor-pointer" />
-                            <span class="font-medium text-slate-700">Rain (বৃষ্টি +৫০%)</span>
+                            <span class="font-medium text-slate-700">Rain/বৃষ্টি (+৫০%)</span>
                         </label>
                     </div>
 
