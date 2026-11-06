@@ -12,3 +12,6 @@
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# GSD planning directory
+.planning/
