@@ -5,6 +5,7 @@
 [![Leaflet.js](https://img.shields.io/badge/Leaflet-1.9.4-199900?style=flat-square&logo=leaflet&logoColor=white)](https://leafletjs.com/)
 [![OpenStreetMap](https://img.shields.io/badge/OpenStreetMap-OSRM-7EBC6F?style=flat-square&logo=openstreetmap&logoColor=white)](https://www.openstreetmap.org/)
 [![TailwindCSS](https://img.shields.io/badge/Tailwind-CSS%203.x-38B2AC?style=flat-square&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+[![Dark Mode](https://img.shields.io/badge/Dark%20Mode-Supported-0f172a?style=flat-square&logo=moon&logoColor=facc15)](README.md)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 
 **BharaKoto? (ভাড়াকতো)** is a full-stack web application and algorithmic transit engine designed for commuters in **Dhaka, Bangladesh**. It calculates realistic street fares, official meter rates, route geometries, traffic/rain surges, and DMP (Dhaka Metropolitan Police) VIP arterial road bans for non-motorized and three-wheeler vehicles.
@@ -81,6 +82,14 @@ Supports the 4 primary public transit modes of Dhaka:
 ### 7. Administrative VIP Zone Manager (`admin-zones.php`)
 - Dedicated web portal with Leaflet.draw polygon creation tools.
 - Real-time creation, toggling (activate/deactivate), and permanent deletion of restricted road corridors.
+
+### 8. Universal Dark Mode & Midnight Cartography
+- **Sun ☀️ / Moon 🌙 Toggle Switch:** Instant theme switcher located in the top navigation of both the Commuter Fare Estimator (`index.php`) and the Admin VIP Zone Manager (`admin-zones.php`).
+- **High-Definition Midnight Maps:** Custom tuned midnight cartography filter applied to Leaflet map tiles (`.dark .leaflet-tile-pane`) providing deep obsidian contrast (`#020617`), razor-sharp roads, and vivid red VIP ban overlays with zero blur, zero watermarks, and no paid API keys.
+- **Persistent State & Anti-FOUC:** Theme preference is persisted in `localStorage` and respects system preferences (`prefers-color-scheme`) with an immediate pre-render initialization script to prevent white flash on reload.
+- **Cross-Tab Live Sync:** Theme switches synchronize automatically across all open browser tabs and windows via the `storage` event.
+- **Dynamic UI & Chart Adaptation:** High-contrast Tailwind palette across all vehicle cards, inputs, fare calculation breakdowns, paid fare community modal, and dynamic Chart.js trend graph colors (ticks, grids, and legends).
+- **URL Theme Support:** Direct testing and bookmarking via `?theme=dark` or `?theme=light` query parameters.
 
 ---
 
