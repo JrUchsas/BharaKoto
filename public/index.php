@@ -17,10 +17,30 @@ $csrfToken = CsrfProtection::getToken();
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; script-src 'self' https: 'unsafe-inline' 'unsafe-eval'; style-src 'self' https: 'unsafe-inline'; font-src 'self' https: data:; img-src 'self' https: data: blob:; connect-src 'self' https:;">
     <meta name="csrf-token" content="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES); ?>">
+    <!-- Theme Initialization (Prevents flash of unstyled light theme) -->
+    <script>
+        (function() {
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                const themeParam = urlParams.get('theme');
+                if (themeParam === 'dark' || themeParam === 'light') {
+                    localStorage.setItem('theme', themeParam);
+                }
+                const stored = localStorage.getItem('theme');
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                if (stored === 'dark' || (!stored && prefersDark)) {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+            } catch (e) {}
+        })();
+    </script>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     colors: {
@@ -63,9 +83,49 @@ $csrfToken = CsrfProtection::getToken();
         ::-webkit-scrollbar-track { background: #f1f1f1; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .dark ::-webkit-scrollbar-track { background: #0f172a; }
+        .dark ::-webkit-scrollbar-thumb { background: #334155; }
+        .dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        /* Leaflet Dark Mode Overrides */
+        .dark .leaflet-tile {
+            filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
+        }
+        .dark .leaflet-popup-content-wrapper,
+        .dark .leaflet-popup-tip {
+            background-color: #0f172a;
+            color: #f1f5f9;
+            border: 1px solid #334155;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+        }
+        .dark .leaflet-popup-content {
+            color: #f1f5f9;
+        }
+        .dark .leaflet-tooltip {
+            background-color: #0f172a;
+            color: #f1f5f9;
+            border: 1px solid #334155;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+        }
+        .dark .leaflet-bar a {
+            background-color: #0f172a;
+            color: #f1f5f9;
+            border-bottom: 1px solid #334155;
+        }
+        .dark .leaflet-bar a:hover {
+            background-color: #1e293b;
+            color: #10b981;
+        }
+        .dark .leaflet-control-attribution {
+            background-color: rgba(15, 23, 42, 0.85);
+            color: #94a3b8;
+        }
+        .dark .leaflet-control-attribution a {
+            color: #38bdf8;
+        }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-800 font-sans antialiased">
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans antialiased transition-colors duration-200">
 
     <!-- Top Navigation Bar -->
     <header class="bg-bdgreen-800 text-white shadow-md sticky top-0 z-30">
@@ -82,7 +142,17 @@ $csrfToken = CsrfProtection::getToken();
                     <p class="text-xs text-bdgreen-100">CNG & Rickshaw Fare Estimator with VIP Road Avoidance</p>
                 </div>
             </div>
-            <div class="flex items-center space-x-3">
+            <div class="flex items-center space-x-2 sm:space-x-3">
+                <!-- Theme Toggle Button -->
+                <button type="button" id="themeToggleBtn" onclick="toggleTheme()" aria-label="Toggle Dark / Light Mode"
+                    class="inline-flex items-center justify-center p-2 rounded-lg text-slate-100 hover:text-white bg-bdgreen-700 hover:bg-bdgreen-600 border border-bdgreen-500 transition shadow-sm cursor-pointer" title="Toggle Dark / Light Mode">
+                    <svg id="themeIconSun" class="w-4 h-4 text-amber-300 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                    <svg id="themeIconMoon" class="w-4 h-4 text-slate-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                    </svg>
+                </button>
                 <a href="admin-zones.php" class="inline-flex items-center gap-1.5 text-xs font-semibold bg-bdgreen-700 hover:bg-bdgreen-600 px-3 py-2 rounded-lg border border-bdgreen-500 transition shadow-sm">
                     <svg class="w-4 h-4 text-cngyellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
@@ -109,17 +179,17 @@ $csrfToken = CsrfProtection::getToken();
 
 
                 <!-- Input Form Panel -->
-                <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 space-y-4">
+                <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200 dark:border-slate-800 space-y-4">
                     
                     <!-- Origin Input -->
                     <div class="relative">
-                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1 flex items-center justify-between">
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1 flex items-center justify-between">
                             <span class="flex items-center gap-1.5">
                                 <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-200"></span>
                                 Origin (কোথা থেকে)
                             </span>
                             <div class="flex items-center gap-1.5">
-                                <span id="originCoordsBadge" class="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md font-medium">Please select origin</span>
+                                <span id="originCoordsBadge" class="text-[10px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 px-2 py-0.5 rounded-md font-medium">Please select origin</span>
                                 <button type="button" id="clearOriginBtn" onclick="clearOrigin()" class="hidden text-[10px] text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-1.5 py-0.5 rounded font-bold transition flex items-center gap-0.5" title="Clear Origin from map & input">
                                     &times; Clear
                                 </button>
@@ -128,19 +198,19 @@ $csrfToken = CsrfProtection::getToken();
                         <div class="flex gap-1.5">
                             <div class="relative flex-1">
                                 <input type="text" id="originInput" placeholder="Type or click map to select origin..." 
-                                    class="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-bdgreen-500 focus:border-bdgreen-500 transition shadow-sm bg-slate-50 focus:bg-white pr-8"
+                                    class="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-bdgreen-500 focus:border-bdgreen-500 transition shadow-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:bg-white dark:focus:bg-slate-800 pr-8"
                                     autocomplete="off" />
                                 <button type="button" id="originInputClearX" onclick="clearOrigin()" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-600 text-sm font-bold w-5 h-5 flex items-center justify-center rounded-full hover:bg-slate-100" title="Clear Origin">
                                     &times;
                                 </button>
-                                <div id="originSuggestions" class="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-xl border border-slate-200 z-50 max-h-64 overflow-y-auto hidden"></div>
+                                <div id="originSuggestions" class="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-50 max-h-64 overflow-y-auto hidden"></div>
                             </div>
                             <button type="button" onclick="useCurrentGeolocation()" title="Use My Current GPS Location"
-                                class="px-3 py-2.5 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 rounded-xl border border-slate-300 transition flex items-center justify-center gap-1">
+                                class="px-3 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 hover:text-emerald-700 dark:hover:text-emerald-300 text-slate-600 dark:text-slate-300 rounded-xl border border-slate-300 dark:border-slate-700 transition flex items-center justify-center gap-1 cursor-pointer">
                                 <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
                             </button>
                             <button type="button" onclick="activateMapPicker('origin')" title="Click on map to set Origin"
-                                class="px-3 py-2.5 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 rounded-xl border border-slate-300 transition flex items-center justify-center">
+                                class="px-3 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 hover:text-emerald-700 dark:hover:text-emerald-300 text-slate-600 dark:text-slate-300 rounded-xl border border-slate-300 dark:border-slate-700 transition flex items-center justify-center cursor-pointer">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                             </button>
                         </div>
@@ -151,7 +221,7 @@ $csrfToken = CsrfProtection::getToken();
 
                     <!-- Swap Directions & Clear Row -->
                     <div class="flex items-center justify-between px-1 py-0.5 text-xs">
-                        <button type="button" onclick="swapOriginAndDest()" class="text-slate-600 hover:text-emerald-700 font-semibold flex items-center gap-1.5 hover:bg-slate-100 px-2 py-1 rounded-lg transition" title="Swap Origin and Destination">
+                        <button type="button" onclick="swapOriginAndDest()" class="text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 font-semibold flex items-center gap-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1 rounded-lg transition cursor-pointer" title="Swap Origin and Destination">
                             <span class="text-sm">⇅</span>
                             <span>Swap Route Directions</span>
                         </button>
@@ -162,13 +232,13 @@ $csrfToken = CsrfProtection::getToken();
 
                     <!-- Destination Input -->
                     <div class="relative">
-                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1 flex items-center justify-between">
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1 flex items-center justify-between">
                             <span class="flex items-center gap-1.5">
                                 <span class="w-2.5 h-2.5 rounded-full bg-bdred-500 ring-2 ring-red-200"></span>
                                 Destination (কোথায় যাবেন)
                             </span>
                             <div class="flex items-center gap-1.5">
-                                <span id="destCoordsBadge" class="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md font-medium">Please select destination</span>
+                                <span id="destCoordsBadge" class="text-[10px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 px-2 py-0.5 rounded-md font-medium">Please select destination</span>
                                 <button type="button" id="clearDestBtn" onclick="clearDest()" class="hidden text-[10px] text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-1.5 py-0.5 rounded font-bold transition flex items-center gap-0.5" title="Clear Destination from map & input">
                                     &times; Clear
                                 </button>
@@ -177,15 +247,15 @@ $csrfToken = CsrfProtection::getToken();
                         <div class="flex gap-2">
                             <div class="relative flex-1">
                                 <input type="text" id="destInput" placeholder="Type or click map to select destination..." 
-                                    class="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-bdgreen-500 focus:border-bdgreen-500 transition shadow-sm bg-slate-50 focus:bg-white pr-8"
+                                    class="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-bdgreen-500 focus:border-bdgreen-500 transition shadow-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:bg-white dark:focus:bg-slate-800 pr-8"
                                     autocomplete="off" />
                                 <button type="button" id="destInputClearX" onclick="clearDest()" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-600 text-sm font-bold w-5 h-5 flex items-center justify-center rounded-full hover:bg-slate-100" title="Clear Destination">
                                     &times;
                                 </button>
-                                <div id="destSuggestions" class="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-xl border border-slate-200 z-50 max-h-56 overflow-y-auto hidden"></div>
+                                <div id="destSuggestions" class="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-50 max-h-56 overflow-y-auto hidden"></div>
                             </div>
                             <button type="button" onclick="activateMapPicker('dest')" title="Click on map to set Destination"
-                                class="px-3 py-2.5 bg-slate-100 hover:bg-red-50 hover:text-red-700 text-slate-600 rounded-xl border border-slate-300 transition flex items-center justify-center">
+                                class="px-3 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-red-950/50 hover:text-red-700 dark:hover:text-red-300 text-slate-600 dark:text-slate-300 rounded-xl border border-slate-300 dark:border-slate-700 transition flex items-center justify-center cursor-pointer">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                             </button>
                         </div>
@@ -195,44 +265,44 @@ $csrfToken = CsrfProtection::getToken();
 
                     <!-- Vehicle Type Selector Pills -->
                     <div>
-                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-2">
                             Vehicle Type (যানবাহন)
                         </label>
                         <div class="grid grid-cols-2 gap-2" id="vehicleSelector">
                             <!-- Pedal Rickshaw -->
                             <button type="button" onclick="selectVehicle('pedal_rickshaw')" data-vehicle="pedal_rickshaw"
-                                class="vehicle-btn active flex items-center gap-2 p-3 rounded-xl border-2 border-bdgreen-600 bg-bdgreen-50 text-bdgreen-900 transition text-left">
+                                class="vehicle-btn active flex items-center gap-2 p-3 rounded-xl border-2 border-bdgreen-600 bg-bdgreen-50 dark:bg-emerald-950/60 text-bdgreen-900 dark:text-emerald-300 dark:border-emerald-500 transition text-left cursor-pointer">
                                 <span class="text-2xl">🚲</span>
                                 <div>
                                     <div class="text-xs font-bold leading-tight">Pedal Rickshaw</div>
-                                    <div class="text-[11px] text-slate-500 font-medium">প্যাডেল রিকশা</div>
+                                    <div class="text-[11px] text-slate-500 dark:text-slate-400 font-medium">প্যাডেল রিকশা</div>
                                 </div>
                             </button>
                             <!-- Battery Rickshaw -->
                             <button type="button" onclick="selectVehicle('battery_rickshaw')" data-vehicle="battery_rickshaw"
-                                class="vehicle-btn flex items-center gap-2 p-3 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition text-left">
+                                class="vehicle-btn flex items-center gap-2 p-3 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-700 dark:text-slate-300 transition text-left cursor-pointer">
                                 <span class="text-2xl">⚡</span>
                                 <div>
                                     <div class="text-xs font-bold leading-tight">Battery Auto</div>
-                                    <div class="text-[11px] text-slate-500 font-medium">ব্যাটারি রিকশা</div>
+                                    <div class="text-[11px] text-slate-500 dark:text-slate-400 font-medium">ব্যাটারি রিকশা</div>
                                 </div>
                             </button>
                             <!-- CNG Auto Rickshaw -->
                             <button type="button" onclick="selectVehicle('cng')" data-vehicle="cng"
-                                class="vehicle-btn flex items-center gap-2 p-3 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition text-left">
+                                class="vehicle-btn flex items-center gap-2 p-3 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-700 dark:text-slate-300 transition text-left cursor-pointer">
                                 <span class="text-2xl">🛺</span>
                                 <div>
                                     <div class="text-xs font-bold leading-tight">CNG Auto</div>
-                                    <div class="text-[11px] text-slate-500 font-medium">সিএনজি মিটার</div>
+                                    <div class="text-[11px] text-slate-500 dark:text-slate-400 font-medium">সিএনজি মিটার</div>
                                 </div>
                             </button>
                             <!-- Leguna -->
                             <button type="button" onclick="selectVehicle('leguna')" data-vehicle="leguna"
-                                class="vehicle-btn flex items-center gap-2 p-3 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition text-left">
+                                class="vehicle-btn flex items-center gap-2 p-3 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-700 dark:text-slate-300 transition text-left cursor-pointer">
                                 <span class="text-2xl">🚐</span>
                                 <div>
                                     <div class="text-xs font-bold leading-tight">Leguna</div>
-                                    <div class="text-[11px] text-slate-500 font-medium">হিউম্যান হলার</div>
+                                    <div class="text-[11px] text-slate-500 dark:text-slate-400 font-medium">হিউম্যান হলার</div>
                                 </div>
                             </button>
                         </div>
@@ -240,14 +310,14 @@ $csrfToken = CsrfProtection::getToken();
                     </div>
 
                     <!-- Condition Overrides (Dhaka Jam & Monsoon) -->
-                    <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between text-xs">
+                    <div class="bg-slate-50 dark:bg-slate-800/80 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs">
                         <label class="flex items-center gap-2 cursor-pointer">
-                            <input type="checkbox" id="peakHourToggle" onchange="calculateFareEstimate(false)" class="rounded text-bdgreen-600 focus:ring-bdgreen-500 w-4 h-4 cursor-pointer" />
-                            <span class="font-medium text-slate-700">Peak Hour/পিক আওয়ার (+২০%)</span>
+                            <input type="checkbox" id="peakHourToggle" onchange="calculateFareEstimate(false); saveAppState();" class="rounded text-bdgreen-600 focus:ring-bdgreen-500 dark:bg-slate-900 dark:border-slate-600 w-4 h-4 cursor-pointer" />
+                            <span class="font-medium text-slate-700 dark:text-slate-300">Peak Hour/পিক আওয়ার (+২০%)</span>
                         </label>
                         <label class="flex items-center gap-2 cursor-pointer">
-                            <input type="checkbox" id="rainToggle" onchange="calculateFareEstimate(false)" class="rounded text-bdgreen-600 focus:ring-bdgreen-500 w-4 h-4 cursor-pointer" />
-                            <span class="font-medium text-slate-700">Rain/বৃষ্টি (+৫০%)</span>
+                            <input type="checkbox" id="rainToggle" onchange="calculateFareEstimate(false); saveAppState();" class="rounded text-bdgreen-600 focus:ring-bdgreen-500 dark:bg-slate-900 dark:border-slate-600 w-4 h-4 cursor-pointer" />
+                            <span class="font-medium text-slate-700 dark:text-slate-300">Rain/বৃষ্টি (+৫০%)</span>
                         </label>
                     </div>
 
@@ -266,13 +336,13 @@ $csrfToken = CsrfProtection::getToken();
                 <div id="resultsCard" class="hidden space-y-4">
                     
                     <!-- VIP Road Ban Warning Alert (shown when route intersects restricted zone) -->
-                    <div id="vipWarningAlert" class="hidden bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-xl shadow-sm">
+                    <div id="vipWarningAlert" class="hidden bg-amber-50 dark:bg-amber-950/50 border-l-4 border-amber-500 p-4 rounded-r-xl shadow-sm border border-r-amber-200 dark:border-r-amber-900 border-t-amber-200 dark:border-t-amber-900 border-b-amber-200 dark:border-b-amber-900">
                         <div class="flex items-start">
                             <div class="flex-shrink-0 text-amber-500 text-lg">⚠️</div>
                             <div class="ml-3">
-                                <h3 class="text-xs font-bold text-amber-800 uppercase tracking-wider" id="warningTitle">VIP Road Restriction Alert</h3>
-                                <p class="text-xs text-amber-700 mt-0.5" id="warningBody">Rickshaws are prohibited on Rokeya Sarani VIP stretch.</p>
-                                <div class="mt-2 text-xs font-medium text-amber-900 bg-amber-100/70 p-2 rounded-lg" id="transferHint">
+                                <h3 class="text-xs font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider" id="warningTitle">VIP Road Restriction Alert</h3>
+                                <p class="text-xs text-amber-700 dark:text-amber-400 mt-0.5" id="warningBody">Rickshaws are prohibited on Rokeya Sarani VIP stretch.</p>
+                                <div class="mt-2 text-xs font-medium text-amber-900 dark:text-amber-200 bg-amber-100/70 dark:bg-amber-900/40 p-2 rounded-lg" id="transferHint">
                                     💡 Commuter Tip: Switch to MRT Line 6 at Agargaon or take alternate residential bypass.
                                 </div>
                             </div>
@@ -280,11 +350,11 @@ $csrfToken = CsrfProtection::getToken();
                     </div>
 
                     <!-- Primary Fare Breakdown Card -->
-                    <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
-                        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200 dark:border-slate-800">
+                        <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
                             <div>
-                                <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Estimated Trip Details</span>
-                                <div class="text-sm font-semibold text-slate-800" id="routeSummaryText">2.8 km • ~18 mins</div>
+                                <span class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Estimated Trip Details</span>
+                                <div class="text-sm font-semibold text-slate-800 dark:text-slate-100" id="routeSummaryText">2.8 km • ~18 mins</div>
                             </div>
                             <div class="flex items-center gap-1.5" id="surgeBadges">
                                 <!-- Peak / Rain badges -->
@@ -292,56 +362,56 @@ $csrfToken = CsrfProtection::getToken();
                         </div>
 
                         <!-- Street / Mama Rate Highlight -->
-                        <div class="my-4 bg-gradient-to-br from-bdgreen-50 to-emerald-100/50 p-4 rounded-xl border border-bdgreen-200/80 flex items-center justify-between">
+                        <div class="my-4 bg-gradient-to-br from-bdgreen-50 to-emerald-100/50 dark:from-emerald-950/40 dark:to-slate-900 p-4 rounded-xl border border-bdgreen-200/80 dark:border-emerald-800/60 flex items-center justify-between">
                             <div>
-                                <span class="text-xs font-bold uppercase tracking-wider text-bdgreen-800 flex items-center gap-1">
+                                <span class="text-xs font-bold uppercase tracking-wider text-bdgreen-800 dark:text-emerald-300 flex items-center gap-1">
                                     <span>Real Street / "Mama" Fare</span>
                                     <span class="bg-bdgreen-600 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">5-Tk Rounding</span>
                                 </span>
-                                <p class="text-xs text-slate-600 mt-0.5">What the driver will typically demand</p>
+                                <p class="text-xs text-slate-600 dark:text-slate-400 mt-0.5">What the driver will typically demand</p>
                             </div>
                             <div class="text-right">
-                                <div class="text-3xl font-black text-bdgreen-900" id="streetFareDisplay">৳ 85</div>
-                                <span class="text-[11px] font-semibold text-bdgreen-700">Fair Dhaka Price</span>
+                                <div class="text-3xl font-black text-bdgreen-900 dark:text-emerald-200" id="streetFareDisplay">৳ 85</div>
+                                <span class="text-[11px] font-semibold text-bdgreen-700 dark:text-emerald-400">Fair Dhaka Price</span>
                             </div>
                         </div>
 
                         <!-- Bargaining Range -->
                         <div class="grid grid-cols-2 gap-3 mb-4">
-                            <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                                <span class="text-[11px] font-semibold text-slate-500 block">Bargaining Window (দরদাম)</span>
-                                <div class="text-base font-bold text-slate-800 mt-0.5" id="bargainRangeDisplay">৳ 80 - ৳ 100</div>
-                                <span class="text-[10px] text-slate-400">Aim for the lower end</span>
+                            <div class="bg-slate-50 dark:bg-slate-800/80 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+                                <span class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block">Bargaining Window (দরদাম)</span>
+                                <div class="text-base font-bold text-slate-800 dark:text-slate-100 mt-0.5" id="bargainRangeDisplay">৳ 80 - ৳ 100</div>
+                                <span class="text-[10px] text-slate-400 dark:text-slate-500">Aim for the lower end</span>
                             </div>
-                            <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                                <span class="text-[11px] font-semibold text-slate-500 block">Govt/Meter Rate (অফিসিয়াল)</span>
-                                <div class="text-base font-bold text-slate-800 mt-0.5" id="officialFareDisplay">৳ 67.00</div>
-                                <span class="text-[10px] text-slate-400">BRTA legal chart</span>
+                            <div class="bg-slate-50 dark:bg-slate-800/80 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+                                <span class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block">Govt/Meter Rate (অফিসিয়াল)</span>
+                                <div class="text-base font-bold text-slate-800 dark:text-slate-100 mt-0.5" id="officialFareDisplay">৳ 67.00</div>
+                                <span class="text-[10px] text-slate-400 dark:text-slate-500">BRTA legal chart</span>
                             </div>
                         </div>
 
                         <!-- Crowdsourced Community Badge -->
-                        <div class="p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-between">
+                        <div class="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 flex items-center justify-between">
                             <div class="flex items-center gap-2">
                                 <span class="text-lg">👥</span>
                                 <div>
-                                    <div class="text-xs font-bold text-amber-900" id="crowdAvgTitle">Community Average: ৳ 90</div>
-                                    <div class="text-[11px] text-amber-700" id="crowdSubmissionsCount">Based on 3 recent commuter logs</div>
+                                    <div class="text-xs font-bold text-amber-900 dark:text-amber-200" id="crowdAvgTitle">Community Average: ৳ 90</div>
+                                    <div class="text-[11px] text-amber-700 dark:text-amber-400" id="crowdSubmissionsCount">Based on 3 recent commuter logs</div>
                                 </div>
                             </div>
-                            <button onclick="openModal()" class="text-xs font-semibold text-amber-900 bg-amber-200 hover:bg-amber-300 px-2.5 py-1 rounded-lg transition">
+                            <button onclick="openModal()" class="text-xs font-semibold text-amber-900 dark:text-amber-200 bg-amber-200 dark:bg-amber-800/60 hover:bg-amber-300 dark:hover:bg-amber-700 px-2.5 py-1 rounded-lg transition cursor-pointer">
                                 Log Yours
                             </button>
                         </div>
 
                         <!-- Fare History Panel -->
-                        <div id="fareHistoryPanel" class="hidden bg-white rounded-2xl p-4 shadow-sm border border-slate-200 space-y-3">
+                        <div id="fareHistoryPanel" class="hidden bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-sm border border-slate-200 dark:border-slate-800 space-y-3">
                             <div class="flex items-center justify-between">
-                                <span class="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                                <span class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
                                     <span class="text-lg">📈</span>
                                     <span>Fare History & Trends</span>
                                 </span>
-                                <select id="historyTimeRange" onchange="loadFareHistory()" class="text-xs px-2 py-1 rounded-lg border border-slate-300 bg-white">
+                                <select id="historyTimeRange" onchange="loadFareHistory()" class="text-xs px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200">
                                     <option value="30">Last 30 days</option>
                                     <option value="90" selected>Last 90 days</option>
                                     <option value="180">Last 6 months</option>
@@ -351,21 +421,21 @@ $csrfToken = CsrfProtection::getToken();
 
                             <!-- Summary Stats Row -->
                             <div id="historySummary" class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center hidden">
-                                <div class="bg-emerald-50 p-2 rounded-xl border border-emerald-200">
-                                    <div class="text-2xl font-black text-emerald-800" id="histAvgFare">৳ 0</div>
-                                    <div class="text-[10px] text-emerald-700">Avg Fare</div>
+                                <div class="bg-emerald-50 dark:bg-emerald-950/40 p-2 rounded-xl border border-emerald-200 dark:border-emerald-800/60">
+                                    <div class="text-2xl font-black text-emerald-800 dark:text-emerald-300" id="histAvgFare">৳ 0</div>
+                                    <div class="text-[10px] text-emerald-700 dark:text-emerald-400">Avg Fare</div>
                                 </div>
-                                <div class="bg-blue-50 p-2 rounded-xl border border-blue-200">
-                                    <div class="text-2xl font-black text-blue-800" id="histMinFare">৳ 0</div>
-                                    <div class="text-[10px] text-blue-700">Lowest</div>
+                                <div class="bg-blue-50 dark:bg-blue-950/40 p-2 rounded-xl border border-blue-200 dark:border-blue-800/60">
+                                    <div class="text-2xl font-black text-blue-800 dark:text-blue-300" id="histMinFare">৳ 0</div>
+                                    <div class="text-[10px] text-blue-700 dark:text-blue-400">Lowest</div>
                                 </div>
-                                <div class="bg-rose-50 p-2 rounded-xl border border-rose-200">
-                                    <div class="text-2xl font-black text-rose-800" id="histMaxFare">৳ 0</div>
-                                    <div class="text-[10px] text-rose-700">Highest</div>
+                                <div class="bg-rose-50 dark:bg-rose-950/40 p-2 rounded-xl border border-rose-200 dark:border-rose-800/60">
+                                    <div class="text-2xl font-black text-rose-800 dark:text-rose-300" id="histMaxFare">৳ 0</div>
+                                    <div class="text-[10px] text-rose-700 dark:text-rose-400">Highest</div>
                                 </div>
-                                <div class="bg-amber-50 p-2 rounded-xl border border-amber-200">
-                                    <div class="text-2xl font-black text-amber-800" id="histCount">0</div>
-                                    <div class="text-[10px] text-amber-700">Records</div>
+                                <div class="bg-amber-50 dark:bg-amber-950/40 p-2 rounded-xl border border-amber-200 dark:border-amber-800/60">
+                                    <div class="text-2xl font-black text-amber-800 dark:text-amber-300" id="histCount">0</div>
+                                    <div class="text-[10px] text-amber-700 dark:text-amber-400">Records</div>
                                 </div>
                             </div>
 
@@ -376,24 +446,24 @@ $csrfToken = CsrfProtection::getToken();
 
                             <!-- Distribution Bars -->
                             <div id="fareDistribution" class="space-y-1 hidden">
-                                <div class="text-[11px] font-semibold text-slate-600">Fare Distribution (৳ 10 buckets)</div>
+                                <div class="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Fare Distribution (৳ 10 buckets)</div>
                                 <div id="distBars" class="space-y-1"></div>
                             </div>
 
                             <!-- Recent Records Table -->
                             <div id="historyRecords" class="hidden">
-                                <div class="text-[11px] font-semibold text-slate-600 mb-2">Recent Commuter Submissions</div>
+                                <div class="text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-2">Recent Commuter Submissions</div>
                                 <div class="overflow-x-auto">
                                     <table class="w-full text-[11px]">
                                         <thead>
-                                            <tr class="bg-slate-50 text-slate-600 font-bold">
+                                            <tr class="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold">
                                                 <th class="px-2 py-1.5 text-left">Date</th>
                                                 <th class="px-2 py-1.5 text-right">Fare</th>
                                                 <th class="px-2 py-1.5 text-center">Conditions</th>
                                                 <th class="px-2 py-1.5 text-center">Votes</th>
                                             </tr>
                                         </thead>
-                                        <tbody id="historyRecordsBody" class="divide-y divide-slate-100"></tbody>
+                                        <tbody id="historyRecordsBody" class="divide-y divide-slate-100 dark:divide-slate-800"></tbody>
                                     </table>
                                 </div>
                             </div>
@@ -407,20 +477,20 @@ $csrfToken = CsrfProtection::getToken();
 
             <!-- RIGHT COLUMN: Interactive Leaflet Map -->
             <div class="lg:col-span-7">
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden relative">
+                <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden relative">
                     
                     <!-- Map Toolbar Info Overlay -->
                     <div class="absolute top-3 left-3 right-3 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
-                        <label class="bg-white/95 backdrop-blur-sm px-3 py-1.5 rounded-xl shadow-md border border-red-200 text-xs font-semibold text-slate-800 flex items-center gap-2 pointer-events-auto cursor-pointer select-none">
+                        <label class="bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm px-3 py-1.5 rounded-xl shadow-md border border-red-200 dark:border-red-900 text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2 pointer-events-auto cursor-pointer select-none">
                             <input type="checkbox" id="toggleVipZonesLayer" checked onchange="toggleVipZonesVisibility(this.checked)" class="rounded text-red-600 focus:ring-red-500 w-3.5 h-3.5" />
                             <span class="w-3.5 h-1.5 rounded-full bg-red-600 inline-block shadow-sm"></span>
-                            <span class="text-red-950 font-bold">DMP Official Banned Roads</span>
+                            <span class="text-red-950 dark:text-red-300 font-bold">DMP Official Banned Roads</span>
                         </label>
                         <div class="flex items-center gap-2 pointer-events-auto">
                             <div id="mapPickingIndicator" class="hidden bg-emerald-600 text-white px-3 py-1.5 rounded-xl shadow-md text-xs font-bold animate-pulse">
                                 Click on Map to select location
                             </div>
-                            <button type="button" id="clearMapPointsBtn" onclick="clearAllRoutePoints()" class="hidden bg-white/95 backdrop-blur-sm hover:bg-rose-50 text-rose-700 hover:text-rose-800 px-3 py-1.5 rounded-xl shadow-md border border-rose-300 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer" title="Clear Origin & Destination pins and route line from map">
+                            <button type="button" id="clearMapPointsBtn" onclick="clearAllRoutePoints()" class="hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm hover:bg-rose-50 dark:hover:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-300 dark:border-rose-800 px-3 py-1.5 rounded-xl shadow-md text-xs font-bold flex items-center gap-1.5 transition cursor-pointer" title="Clear Origin & Destination pins and route line from map">
                                 <svg class="w-3.5 h-3.5 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                 <span>Clear Map Points</span>
                             </button>
@@ -431,7 +501,7 @@ $csrfToken = CsrfProtection::getToken();
                     <div id="map"></div>
 
                     <!-- Map Footer Legend -->
-                    <div class="p-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-600 flex flex-wrap items-center justify-between gap-2">
+                    <div class="p-3 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 flex flex-wrap items-center justify-between gap-2">
                         <div class="flex items-center gap-4">
                             <span class="flex items-center gap-1.5">
                                 <span class="w-3 h-3 rounded-full bg-emerald-600 inline-block"></span>
@@ -457,8 +527,8 @@ $csrfToken = CsrfProtection::getToken();
     </main>
 
     <!-- "Log What You Paid" Modal -->
-    <div id="paidFareModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 relative animate-in fade-in duration-200">
+    <div id="paidFareModal" class="fixed inset-0 bg-slate-900/60 dark:bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 relative animate-in fade-in duration-200 text-slate-800 dark:text-slate-100">
             <button onclick="closeModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
@@ -467,15 +537,15 @@ $csrfToken = CsrfProtection::getToken();
                 <div class="w-10 h-10 rounded-xl bg-cngyellow-100 text-cngyellow-700 flex items-center justify-center text-xl font-bold mb-2">
                     ৳
                 </div>
-                <h2 class="text-lg font-bold text-slate-800">Log What You Paid (ভাড়া জানান)</h2>
-                <p class="text-xs text-slate-500 mt-0.5">Help fellow Dhaka commuters negotiate fair fares.</p>
+                <h2 class="text-lg font-bold text-slate-800 dark:text-slate-100">Log What You Paid (ভাড়া জানান)</h2>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Help fellow Dhaka commuters negotiate fair fares.</p>
             </div>
 
             <form id="submitFareForm" onsubmit="handlePaidFareSubmit(event)" class="space-y-3 text-xs">
                 <input type="hidden" name="csrf_token" id="modalCsrfToken" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES); ?>" />
                 <div>
-                    <label class="block font-semibold text-slate-700 mb-1">Vehicle Taken</label>
-                    <select id="modalVehicle" class="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-bdgreen-500">
+                    <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Vehicle Taken</label>
+                    <select id="modalVehicle" class="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-bdgreen-500">
                         <option value="pedal_rickshaw">Pedal Rickshaw (প্যাডেল রিকশা)</option>
                         <option value="battery_rickshaw">Battery Rickshaw (ব্যাটারি রিকশা)</option>
                         <option value="cng">CNG Auto Rickshaw (সিএনজি)</option>
@@ -485,27 +555,27 @@ $csrfToken = CsrfProtection::getToken();
 
                 <div class="grid grid-cols-2 gap-2">
                     <div>
-                        <label class="block font-semibold text-slate-700 mb-1">Origin Landmark</label>
-                        <input type="text" id="modalOrigin" required placeholder="e.g. Farmgate" class="w-full text-xs px-3 py-2 rounded-lg border border-slate-300" />
+                        <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Origin Landmark</label>
+                        <input type="text" id="modalOrigin" required placeholder="e.g. Farmgate" class="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100" />
                     </div>
                     <div>
-                        <label class="block font-semibold text-slate-700 mb-1">Destination Landmark</label>
-                        <input type="text" id="modalDest" required placeholder="e.g. Agargaon" class="w-full text-xs px-3 py-2 rounded-lg border border-slate-300" />
+                        <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Destination Landmark</label>
+                        <input type="text" id="modalDest" required placeholder="e.g. Agargaon" class="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100" />
                     </div>
                 </div>
 
                 <div>
-                    <label class="block font-semibold text-slate-700 mb-1">Fare Paid (in BDT / টাকা)</label>
+                    <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Fare Paid (in BDT / টাকা)</label>
                     <div class="relative">
                         <span class="absolute left-3 top-2 font-bold text-slate-400">৳</span>
-                        <input type="number" id="modalFare" required min="10" max="2000" placeholder="e.g. 90" class="w-full text-xs pl-8 pr-3 py-2 rounded-lg border border-slate-300 font-bold text-slate-800" />
+                        <input type="number" id="modalFare" required min="10" max="2000" placeholder="e.g. 90" class="w-full text-xs pl-8 pr-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold text-slate-800 dark:text-slate-100" />
                     </div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-2">
                     <div>
-                        <label class="block font-semibold text-slate-700 mb-1">Weather</label>
-                        <select id="modalWeather" class="w-full text-xs px-3 py-2 rounded-lg border border-slate-300">
+                        <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Weather</label>
+                        <select id="modalWeather" class="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">
                             <option value="clear">Clear / Normal</option>
                             <option value="rain">Raining (বৃষ্টি)</option>
                             <option value="waterlogged">Waterlogged (জলাবদ্ধ)</option>
@@ -513,8 +583,8 @@ $csrfToken = CsrfProtection::getToken();
                         </select>
                     </div>
                     <div>
-                        <label class="block font-semibold text-slate-700 mb-1">Traffic Jam</label>
-                        <select id="modalTraffic" class="w-full text-xs px-3 py-2 rounded-lg border border-slate-300">
+                        <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Traffic Jam</label>
+                        <select id="modalTraffic" class="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">
                             <option value="normal">Normal</option>
                             <option value="moderate">Moderate Jam</option>
                             <option value="heavy_jam">Heavy Jam</option>
@@ -523,13 +593,13 @@ $csrfToken = CsrfProtection::getToken();
                 </div>
 
                 <div>
-                    <label class="block font-semibold text-slate-700 mb-1">Your Mobile Phone (Optional)</label>
-                    <input type="text" id="modalPhone" placeholder="017xxxxxxxx (for reputation points)" class="w-full text-xs px-3 py-2 rounded-lg border border-slate-300" />
+                    <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Your Mobile Phone (Optional)</label>
+                    <input type="text" id="modalPhone" placeholder="017xxxxxxxx (for reputation points)" class="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100" />
                 </div>
 
                 <div class="pt-2 flex justify-end gap-2">
-                    <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 font-medium">Cancel</button>
-                    <button type="submit" id="modalSubmitBtn" class="px-4 py-2 rounded-lg bg-bdgreen-600 hover:bg-bdgreen-700 text-white font-bold shadow-sm">Submit Fare</button>
+                    <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium cursor-pointer">Cancel</button>
+                    <button type="submit" id="modalSubmitBtn" class="px-4 py-2 rounded-lg bg-bdgreen-600 hover:bg-bdgreen-700 text-white font-bold shadow-sm cursor-pointer">Submit Fare</button>
                 </div>
             </form>
         </div>
@@ -549,6 +619,9 @@ $csrfToken = CsrfProtection::getToken();
 
         // Initialize App on DOM Load
         document.addEventListener('DOMContentLoaded', () => {
+            const isDark = document.documentElement.classList.contains('dark');
+            updateThemeIcons(isDark);
+
             initLeafletMap();
             loadActiveRestrictedZones();
             setupAutocomplete('originInput', 'originSuggestions', 'originLat', 'originLng', 'origin');
@@ -564,7 +637,81 @@ $csrfToken = CsrfProtection::getToken();
 
             // Restore persisted points, markers, vehicle, and route from localStorage
             restoreAppState();
+
+            // Listen for cross-tab theme updates
+            window.addEventListener('storage', (e) => {
+                if (e.key === 'theme') {
+                    const isDarkTheme = e.newValue === 'dark';
+                    document.documentElement.classList.toggle('dark', isDarkTheme);
+                    updateThemeIcons(isDarkTheme);
+                    updateMapTiles(isDarkTheme);
+                    updateChartTheme(isDarkTheme);
+                }
+            });
         });
+        // Theme toggle functions
+        function toggleTheme() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            try {
+                localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            } catch (e) {}
+            updateThemeIcons(isDark);
+            updateMapTiles(isDark);
+            updateChartTheme(isDark);
+        }
+
+        function updateThemeIcons(isDark) {
+            const sunIcon = document.getElementById('themeIconSun');
+            const moonIcon = document.getElementById('themeIconMoon');
+            const toggleBtn = document.getElementById('themeToggleBtn');
+            if (sunIcon && moonIcon) {
+                if (isDark) {
+                    sunIcon.classList.remove('hidden');
+                    moonIcon.classList.add('hidden');
+                } else {
+                    sunIcon.classList.add('hidden');
+                    moonIcon.classList.remove('hidden');
+                }
+            }
+            if (toggleBtn) {
+                const label = isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+                toggleBtn.setAttribute('title', label);
+                toggleBtn.setAttribute('aria-label', label);
+            }
+        }
+
+        function updateMapTiles(isDark) {
+            if (window.bharakotoTileLayers && map) {
+                const { light, dark } = window.bharakotoTileLayers;
+                if (isDark) {
+                    if (map.hasLayer(light)) map.removeLayer(light);
+                    if (!map.hasLayer(dark)) dark.addTo(map);
+                } else {
+                    if (map.hasLayer(dark)) map.removeLayer(dark);
+                    if (!map.hasLayer(light)) light.addTo(map);
+                }
+            }
+        }
+
+        function updateChartTheme(isDark) {
+            if (!fareTrendChart) return;
+            const textColor = isDark ? '#94a3b8' : '#64748b';
+            const gridColor = isDark ? '#334155' : '#e2e8f0';
+            const legendColor = isDark ? '#e2e8f0' : '#475569';
+
+            if (fareTrendChart.options.scales?.x) {
+                fareTrendChart.options.scales.x.ticks.color = textColor;
+            }
+            if (fareTrendChart.options.scales?.y) {
+                fareTrendChart.options.scales.y.ticks.color = textColor;
+                fareTrendChart.options.scales.y.grid.color = gridColor;
+            }
+            if (fareTrendChart.options.plugins?.legend?.labels) {
+                fareTrendChart.options.plugins.legend.labels.color = legendColor;
+            }
+            fareTrendChart.update();
+        }
+
 
         // Initialize Leaflet Map
         function initLeafletMap() {
@@ -583,12 +730,8 @@ $csrfToken = CsrfProtection::getToken();
                 attribution: '&copy; OpenStreetMap contributors &copy; CARTO | BharaKoto Dhaka'
             });
 
-            // Add appropriate layer based on current theme
-            if (document.documentElement.classList.contains('dark')) {
-                darkTiles.addTo(map);
-            } else {
-                lightTiles.addTo(map);
-            }
+            // Always use standard tiles, CSS filter handles dark mode
+            lightTiles.addTo(map);
 
             // Store references for theme switching
             window.bharakotoTileLayers = { light: lightTiles, dark: darkTiles };
@@ -1154,13 +1297,13 @@ $csrfToken = CsrfProtection::getToken();
                 if (json.status === 'success' && Array.isArray(json.data) && json.data.length > 0) {
                     json.data.forEach(item => {
                         const opt = document.createElement('div');
-                        opt.className = 'place-option px-3.5 py-2.5 hover:bg-slate-100 cursor-pointer text-xs border-b border-slate-100 last:border-0 flex items-center justify-between transition';
+                        opt.className = 'place-option px-3.5 py-2.5 hover:bg-slate-100 dark:hover:bg-slate-700/60 cursor-pointer text-xs border-b border-slate-100 dark:border-slate-700/60 last:border-0 flex items-center justify-between transition';
                         opt.innerHTML = `
                             <div>
-                                <div class="font-semibold text-slate-800">${escapeHtml(item.name_en)} ${item.name_bn ? `<span class="font-normal text-slate-400">(${escapeHtml(item.name_bn)})</span>` : ''}</div>
+                                <div class="font-semibold text-slate-800 dark:text-slate-100">${escapeHtml(item.name_en)} ${item.name_bn ? `<span class="font-normal text-slate-400">(${escapeHtml(item.name_bn)})</span>` : ''}</div>
                                 <div class="text-[10px] text-slate-400">${escapeHtml(item.area_thana)} • ${escapeHtml(item.node_type ? item.node_type.replace('_', ' ') : 'Dhaka')}</div>
                             </div>
-                            <span class="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded uppercase font-bold">${escapeHtml(item.source)}</span>
+                            <span class="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 px-1.5 py-0.5 rounded uppercase font-bold">${escapeHtml(item.source)}</span>
                         `;
                         opt.addEventListener('click', () => {
                             const lat = parseFloat(item.latitude);
@@ -1178,12 +1321,12 @@ $csrfToken = CsrfProtection::getToken();
                     // Add "Use Custom Pin on Map" option at bottom if user typed query
                     if (q !== '') {
                         const customPinOpt = document.createElement('div');
-                        customPinOpt.className = 'px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100/70 cursor-pointer text-xs border-t border-slate-200 text-emerald-900 font-medium flex items-center gap-2 transition';
+                        customPinOpt.className = 'px-3.5 py-2 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100/70 dark:hover:bg-emerald-900/60 cursor-pointer text-xs border-t border-slate-200 dark:border-slate-700 text-emerald-900 dark:text-emerald-200 font-medium flex items-center gap-2 transition';
                         customPinOpt.innerHTML = `
                             <span>📍</span>
                             <div>
                                 <span class="font-bold">Use "${escapeHtml(q)}"</span>
-                                <span class="text-[10px] text-emerald-700 block">Click here to pin exact spot on Dhaka map</span>
+                                <span class="text-[10px] text-emerald-700 dark:text-emerald-400 block">Click here to pin exact spot on Dhaka map</span>
                             </div>
                         `;
                         customPinOpt.addEventListener('click', () => {
@@ -1197,13 +1340,13 @@ $csrfToken = CsrfProtection::getToken();
                 } else {
                     // No matching places found fallback
                     const notFoundBox = document.createElement('div');
-                    notFoundBox.className = 'p-3 bg-amber-50 text-xs border border-amber-200 rounded-xl m-1.5 text-slate-800';
+                    notFoundBox.className = 'p-3 bg-amber-50 dark:bg-amber-950/50 text-xs border border-amber-200 dark:border-amber-800 rounded-xl m-1.5 text-slate-800 dark:text-slate-100';
                     notFoundBox.innerHTML = `
-                        <div class="font-bold text-amber-900 mb-0.5 flex items-center gap-1">
+                        <div class="font-bold text-amber-900 dark:text-amber-300 mb-0.5 flex items-center gap-1">
                             <span>📍</span>
                             <span>"${escapeHtml(q)}" not in standard landmarks</span>
                         </div>
-                        <p class="text-[11px] text-slate-600 mb-2">You can still use this location by pinning it directly on the map!</p>
+                        <p class="text-[11px] text-slate-600 dark:text-slate-400 mb-2">You can still use this location by pinning it directly on the map!</p>
                         <button type="button" class="w-full py-1.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs shadow-sm transition">
                             Click here to pin "${escapeHtml(q)}" on map
                         </button>
@@ -1420,6 +1563,7 @@ $csrfToken = CsrfProtection::getToken();
 
         function renderTrendChart(trends) {
             const ctx = document.getElementById('fareTrendChart').getContext('2d');
+            const isDark = document.documentElement.classList.contains('dark');
 
             if (fareTrendChart) {
                 fareTrendChart.destroy();
@@ -1429,7 +1573,7 @@ $csrfToken = CsrfProtection::getToken();
                 // Draw empty state
                 ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
                 ctx.font = '12px sans-serif';
-                ctx.fillStyle = '#94a3b8';
+                ctx.fillStyle = isDark ? '#64748b' : '#94a3b8';
                 ctx.textAlign = 'center';
                 ctx.fillText('No historical data for this route yet', ctx.canvas.width / 2, ctx.canvas.height / 2);
                 return;
@@ -1491,6 +1635,7 @@ $csrfToken = CsrfProtection::getToken();
                             position: 'top',
                             labels: {
                                 font: { size: 10 },
+                                color: isDark ? '#e2e8f0' : '#475569',
                                 usePointStyle: true,
                             }
                         },
@@ -1508,13 +1653,13 @@ $csrfToken = CsrfProtection::getToken();
                     },
                     scales: {
                         x: {
-                            ticks: { font: { size: 9 }, maxTicksLimit: 10 },
+                            ticks: { font: { size: 9 }, color: isDark ? '#94a3b8' : '#64748b', maxTicksLimit: 10 },
                             grid: { display: false }
                         },
                         y: {
                             beginAtZero: false,
-                            ticks: { font: { size: 9 }, callback: v => '৳ ' + v },
-                            grid: { color: '#e2e8f0' }
+                            ticks: { font: { size: 9 }, color: isDark ? '#94a3b8' : '#64748b', callback: v => '৳ ' + v },
+                            grid: { color: isDark ? '#334155' : '#e2e8f0' }
                         }
                     }
                 }
@@ -1540,11 +1685,11 @@ $csrfToken = CsrfProtection::getToken();
                 const bar = document.createElement('div');
                 bar.className = 'flex items-center gap-2';
                 bar.innerHTML = `
-                    <span class="text-[10px] font-mono text-slate-500 w-14 text-right">৳ ${d.bucket}-${d.bucket + 9}</span>
-                    <div class="flex-1 h-3 bg-slate-200 rounded-full overflow-hidden">
+                    <span class="text-[10px] font-mono text-slate-500 dark:text-slate-400 w-14 text-right">৳ ${d.bucket}-${d.bucket + 9}</span>
+                    <div class="flex-1 h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                         <div class="h-full bg-emerald-500 rounded-full transition-all duration-500" style="width: ${pct}%"></div>
                     </div>
-                    <span class="text-[10px] font-bold text-slate-700 w-10">${d.count}</span>
+                    <span class="text-[10px] font-bold text-slate-700 dark:text-slate-200 w-10">${d.count}</span>
                 `;
                 container.appendChild(bar);
             });
@@ -1564,23 +1709,23 @@ $csrfToken = CsrfProtection::getToken();
 
             records.slice(0, 20).forEach(r => {
                 const tr = document.createElement('tr');
-                tr.className = 'hover:bg-slate-50';
+                tr.className = 'hover:bg-slate-50 dark:hover:bg-slate-800/60 transition';
 
                 const date = new Date(r.created_at);
                 const dateStr = date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
 
                 const conditions = [];
-                if (r.is_peak_hour) conditions.push('<span class="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px]">Peak</span>');
-                if (r.weather_condition === 'rain') conditions.push('<span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-[9px]">Rain</span>');
-                if (r.traffic_condition === 'heavy_jam') conditions.push('<span class="px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded text-[9px]">Heavy Jam</span>');
+                if (r.is_peak_hour) conditions.push('<span class="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 rounded text-[9px]">Peak</span>');
+                if (r.weather_condition === 'rain') conditions.push('<span class="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 rounded text-[9px]">Rain</span>');
+                if (r.traffic_condition === 'heavy_jam') conditions.push('<span class="px-1.5 py-0.5 bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 rounded text-[9px]">Heavy Jam</span>');
 
                 const votes = r.upvotes - r.downvotes;
-                const voteColor = votes > 0 ? 'text-emerald-700' : (votes < 0 ? 'text-rose-700' : 'text-slate-500');
+                const voteColor = votes > 0 ? 'text-emerald-700 dark:text-emerald-400' : (votes < 0 ? 'text-rose-700 dark:text-rose-400' : 'text-slate-500 dark:text-slate-400');
 
                 tr.innerHTML = `
-                    <td class="px-2 py-1.5 text-slate-700">${dateStr}</td>
-                    <td class="px-2 py-1.5 text-right font-bold text-slate-800">৳ ${r.fare_paid_bdt}</td>
-                    <td class="px-2 py-1.5 text-center">${conditions.join(' ') || '<span class="text-slate-400 text-[9px]">Normal</span>'}</td>
+                    <td class="px-2 py-1.5 text-slate-700 dark:text-slate-300">${dateStr}</td>
+                    <td class="px-2 py-1.5 text-right font-bold text-slate-800 dark:text-slate-100">৳ ${r.fare_paid_bdt}</td>
+                    <td class="px-2 py-1.5 text-center">${conditions.join(' ') || '<span class="text-slate-400 dark:text-slate-500 text-[9px]">Normal</span>'}</td>
                     <td class="px-2 py-1.5 text-center ${voteColor} font-bold">${votes > 0 ? '+' : ''}${votes}</td>
                 `;
                 tbody.appendChild(tr);

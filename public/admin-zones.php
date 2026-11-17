@@ -17,10 +17,30 @@ $csrfToken = CsrfProtection::getToken();
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; script-src 'self' https: 'unsafe-inline' 'unsafe-eval'; style-src 'self' https: 'unsafe-inline'; font-src 'self' https: data:; img-src 'self' https: data: blob:; connect-src 'self' https:;">
     <meta name="csrf-token" content="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES); ?>">
+    <!-- Theme Initialization (Prevents flash of unstyled light theme) -->
+    <script>
+        (function() {
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                const themeParam = urlParams.get('theme');
+                if (themeParam === 'dark' || themeParam === 'light') {
+                    localStorage.setItem('theme', themeParam);
+                }
+                const stored = localStorage.getItem('theme');
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                if (stored === 'dark' || (!stored && prefersDark)) {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+            } catch (e) {}
+        })();
+    </script>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     colors: {
@@ -46,9 +66,68 @@ $csrfToken = CsrfProtection::getToken();
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
     <style>
         #adminMap { height: 500px; width: 100%; border-radius: 1rem; }
+        /* Custom scrollbars */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .dark ::-webkit-scrollbar-track { background: #0f172a; }
+        .dark ::-webkit-scrollbar-thumb { background: #334155; }
+        .dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        /* Leaflet & Leaflet.draw Dark Mode Overrides */
+        .dark .leaflet-tile {
+            filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
+        }
+        .dark .leaflet-popup-content-wrapper,
+        .dark .leaflet-popup-tip {
+            background-color: #0f172a;
+            color: #f1f5f9;
+            border: 1px solid #334155;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+        }
+        .dark .leaflet-popup-content {
+            color: #f1f5f9;
+        }
+        .dark .leaflet-tooltip {
+            background-color: #0f172a;
+            color: #f1f5f9;
+            border: 1px solid #334155;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+        }
+        .dark .leaflet-bar a {
+            background-color: #0f172a;
+            color: #f1f5f9;
+            border-bottom: 1px solid #334155;
+        }
+        .dark .leaflet-bar a:hover {
+            background-color: #1e293b;
+            color: #f59e0b;
+        }
+        .dark .leaflet-draw-toolbar a {
+            background-color: #0f172a;
+            border-bottom: 1px solid #334155;
+        }
+        .dark .leaflet-draw-toolbar a:hover {
+            background-color: #1e293b;
+        }
+        .dark .leaflet-draw-actions {
+            background-color: #0f172a;
+        }
+        .dark .leaflet-draw-actions a {
+            background-color: #1e293b;
+            color: #f1f5f9;
+        }
+        .dark .leaflet-control-attribution {
+            background-color: rgba(15, 23, 42, 0.85);
+            color: #94a3b8;
+        }
+        .dark .leaflet-control-attribution a {
+            color: #38bdf8;
+        }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-800 font-sans antialiased">
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans antialiased transition-colors duration-200">
 
     <!-- Top Navigation -->
     <header class="bg-slate-900 text-white shadow-md sticky top-0 z-30">
@@ -65,10 +144,22 @@ $csrfToken = CsrfProtection::getToken();
                     <p class="text-xs text-slate-400">Draw VIP road bans & flyover restrictions on Dhaka's map</p>
                 </div>
             </div>
-            <a href="index.php" class="inline-flex items-center gap-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded-lg border border-slate-700 transition">
-                <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
-                <span>Back to Fare Estimator</span>
-            </a>
+            <div class="flex items-center space-x-2 sm:space-x-3">
+                <!-- Theme Toggle Button -->
+                <button type="button" id="adminThemeToggleBtn" onclick="toggleTheme()" aria-label="Toggle Dark / Light Mode"
+                    class="inline-flex items-center justify-center p-2 rounded-lg text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition shadow-sm cursor-pointer" title="Toggle Dark / Light Mode">
+                    <svg id="adminThemeIconSun" class="w-4 h-4 text-amber-300 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                    <svg id="adminThemeIconMoon" class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                    </svg>
+                </button>
+                <a href="index.php" class="inline-flex items-center gap-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded-lg border border-slate-700 transition">
+                    <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+                    <span>Back to Fare Estimator</span>
+                </a>
+            </div>
         </div>
     </header>
 
@@ -78,12 +169,12 @@ $csrfToken = CsrfProtection::getToken();
             <!-- LEFT COLUMN: Draw & Save Restricted Zone Form -->
             <div class="lg:col-span-5 space-y-4">
                 
-                <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
-                    <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-                        <h2 class="text-sm font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200 dark:border-slate-800">
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
+                        <h2 class="text-sm font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200 flex items-center gap-2">
                             <span>✏️ Add New Restricted Zone</span>
                         </h2>
-                        <span id="drawStatusBadge" class="text-[11px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-md font-medium">
+                        <span id="drawStatusBadge" class="text-[11px] bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 px-2 py-0.5 rounded-md font-medium">
                             Use Polygon Tool on Map
                         </span>
                     </div>
@@ -91,19 +182,19 @@ $csrfToken = CsrfProtection::getToken();
                     <form id="createZoneForm" onsubmit="handleSaveZone(event)" class="space-y-3.5 text-xs">
                         
                         <div>
-                            <label class="block font-bold text-slate-700 mb-1">Zone Name *</label>
+                            <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">Zone Name *</label>
                             <input type="text" id="zoneName" required placeholder="e.g. Bijoy Sarani VIP Intersection, Kuril Flyover"
-                                class="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
+                                class="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
                         </div>
 
                         <div class="grid grid-cols-2 gap-2">
                             <div>
-                                <label class="block font-bold text-slate-700 mb-1">City</label>
-                                <input type="text" id="zoneCity" value="Dhaka" class="w-full text-xs px-3 py-2 rounded-xl border border-slate-300 bg-slate-50" readonly />
+                                <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">City</label>
+                                <input type="text" id="zoneCity" value="Dhaka" class="w-full text-xs px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400" readonly />
                             </div>
                             <div>
-                                <label class="block font-bold text-slate-700 mb-1">Restriction Type</label>
-                                <select id="restrictionType" class="w-full text-xs px-3 py-2 rounded-xl border border-slate-300">
+                                <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">Restriction Type</label>
+                                <select id="restrictionType" class="w-full text-xs px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">
                                     <option value="vip_road_ban">VIP Road Ban</option>
                                     <option value="flyover_ban">Flyover Deck Ban</option>
                                     <option value="time_based_ban">Time-Based Ban</option>
@@ -113,22 +204,22 @@ $csrfToken = CsrfProtection::getToken();
                         </div>
 
                         <div>
-                            <label class="block font-bold text-slate-700 mb-1">Restricted Vehicles *</label>
-                            <div class="grid grid-cols-2 gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200">
-                                <label class="flex items-center gap-2 cursor-pointer font-medium text-slate-700">
-                                    <input type="checkbox" name="restricted_vehicles" value="pedal_rickshaw" checked class="rounded text-amber-600 focus:ring-amber-500 w-4 h-4" />
+                            <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">Restricted Vehicles *</label>
+                            <div class="grid grid-cols-2 gap-2 p-2.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700">
+                                <label class="flex items-center gap-2 cursor-pointer font-medium text-slate-700 dark:text-slate-300">
+                                    <input type="checkbox" name="restricted_vehicles" value="pedal_rickshaw" checked class="rounded text-amber-600 focus:ring-amber-500 dark:bg-slate-900 dark:border-slate-600 w-4 h-4 cursor-pointer" />
                                     <span>Pedal Rickshaw</span>
                                 </label>
-                                <label class="flex items-center gap-2 cursor-pointer font-medium text-slate-700">
-                                    <input type="checkbox" name="restricted_vehicles" value="battery_rickshaw" checked class="rounded text-amber-600 focus:ring-amber-500 w-4 h-4" />
+                                <label class="flex items-center gap-2 cursor-pointer font-medium text-slate-700 dark:text-slate-300">
+                                    <input type="checkbox" name="restricted_vehicles" value="battery_rickshaw" checked class="rounded text-amber-600 focus:ring-amber-500 dark:bg-slate-900 dark:border-slate-600 w-4 h-4 cursor-pointer" />
                                     <span>Battery Auto</span>
                                 </label>
-                                <label class="flex items-center gap-2 cursor-pointer font-medium text-slate-700">
-                                    <input type="checkbox" name="restricted_vehicles" value="cng" class="rounded text-amber-600 focus:ring-amber-500 w-4 h-4" />
+                                <label class="flex items-center gap-2 cursor-pointer font-medium text-slate-700 dark:text-slate-300">
+                                    <input type="checkbox" name="restricted_vehicles" value="cng" class="rounded text-amber-600 focus:ring-amber-500 dark:bg-slate-900 dark:border-slate-600 w-4 h-4 cursor-pointer" />
                                     <span>CNG Auto</span>
                                 </label>
-                                <label class="flex items-center gap-2 cursor-pointer font-medium text-slate-700">
-                                    <input type="checkbox" name="restricted_vehicles" value="leguna" class="rounded text-amber-600 focus:ring-amber-500 w-4 h-4" />
+                                <label class="flex items-center gap-2 cursor-pointer font-medium text-slate-700 dark:text-slate-300">
+                                    <input type="checkbox" name="restricted_vehicles" value="leguna" class="rounded text-amber-600 focus:ring-amber-500 dark:bg-slate-900 dark:border-slate-600 w-4 h-4 cursor-pointer" />
                                     <span>Leguna</span>
                                 </label>
                             </div>
@@ -136,32 +227,32 @@ $csrfToken = CsrfProtection::getToken();
 
                         <div class="grid grid-cols-2 gap-2">
                             <div>
-                                <label class="block font-bold text-slate-700 mb-1">Active Start Time</label>
-                                <input type="time" id="startTime" value="07:00" class="w-full text-xs px-3 py-2 rounded-xl border border-slate-300" />
+                                <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">Active Start Time</label>
+                                <input type="time" id="startTime" value="07:00" class="w-full text-xs px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100" />
                             </div>
                             <div>
-                                <label class="block font-bold text-slate-700 mb-1">Active End Time</label>
-                                <input type="time" id="endTime" value="22:00" class="w-full text-xs px-3 py-2 rounded-xl border border-slate-300" />
+                                <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">Active End Time</label>
+                                <input type="time" id="endTime" value="22:00" class="w-full text-xs px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100" />
                             </div>
                         </div>
 
                         <div>
-                            <label class="block font-bold text-slate-700 mb-1">Commuter Transfer / Detour Hint</label>
+                            <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">Commuter Transfer / Detour Hint</label>
                             <input type="text" id="transferHint" placeholder="e.g. Rickshaws banned. Take MRT Line 6 or surface bypass."
-                                class="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amber-500" />
+                                class="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-amber-500" />
                         </div>
 
                         <div>
-                            <label class="block font-bold text-slate-700 mb-1 flex items-center justify-between">
+                            <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
                                 <span>Polygon GeoJSON (Auto-Filled from Map Draw)</span>
-                                <span id="polyCoordsCount" class="text-[10px] text-slate-400">0 points</span>
+                                <span id="polyCoordsCount" class="text-[10px] text-slate-400 dark:text-slate-500">0 points</span>
                             </label>
                             <textarea id="geojsonInput" required rows="4" readonly placeholder="Draw a polygon on the map to extract coordinates..."
-                                class="w-full text-[11px] font-mono px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 focus:outline-none"></textarea>
+                                class="w-full text-[11px] font-mono px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none"></textarea>
                         </div>
 
                         <button type="submit" id="saveZoneBtn" disabled
-                            class="w-full py-3 px-4 rounded-xl bg-orange-600 hover:bg-orange-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold text-xs tracking-wide shadow-md transition flex items-center justify-center gap-2">
+                            class="w-full py-3 px-4 rounded-xl bg-orange-600 hover:bg-orange-700 disabled:bg-slate-300 dark:disabled:bg-slate-800 disabled:text-slate-500 dark:disabled:text-slate-600 disabled:cursor-not-allowed text-white font-bold text-xs tracking-wide shadow-md transition flex items-center justify-center gap-2 cursor-pointer">
                             <span>Save & Activate Restricted Zone</span>
                         </button>
                     </form>
@@ -172,13 +263,13 @@ $csrfToken = CsrfProtection::getToken();
             <!-- RIGHT COLUMN: Map with Leaflet.Draw + Existing Zones Table -->
             <div class="lg:col-span-7 space-y-6">
                 
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+                <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-4">
                     <div class="flex items-center justify-between mb-3">
                         <div class="flex items-center gap-2">
                             <span class="w-2.5 h-2.5 rounded-full bg-orange-500 animate-ping"></span>
-                            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-700">Interactive VIP Road Drawing Canvas</h2>
+                            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">Interactive VIP Road Drawing Canvas</h2>
                         </div>
-                        <span class="text-xs text-slate-500">Click the polygon button in the toolbar to trace a road segment</span>
+                        <span class="text-xs text-slate-500 dark:text-slate-400">Click the polygon button in the toolbar to trace a road segment</span>
                     </div>
 
                     <!-- Map Container -->
@@ -186,31 +277,31 @@ $csrfToken = CsrfProtection::getToken();
                 </div>
 
                 <!-- Existing Zones Table -->
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="px-5 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+                    <div class="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
                         <div>
-                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">Active Restricted Zones in Dhaka</h3>
-                            <p class="text-[11px] text-slate-500">Official DMP/DTCA rickshaw-free arterial corridors and custom zones</p>
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">Active Restricted Zones in Dhaka</h3>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-400">Official DMP/DTCA rickshaw-free arterial corridors and custom zones</p>
                         </div>
                         <div class="flex flex-wrap items-center gap-2">
-                            <button onclick="loadPrecisionOfficialBans()" class="px-2.5 py-1 text-xs rounded-lg font-semibold bg-bdgreen-50 text-bdgreen-700 border border-bdgreen-300 hover:bg-bdgreen-100 transition shadow-sm" title="Load 4 official DMP corridors with precision OSRM road-following geometries" id="loadPrecisionBtn">
+                            <button onclick="loadPrecisionOfficialBans()" class="px-2.5 py-1 text-xs rounded-lg font-semibold bg-bdgreen-50 dark:bg-emerald-950/50 text-bdgreen-700 dark:text-emerald-300 border border-bdgreen-300 dark:border-emerald-800 hover:bg-bdgreen-100 dark:hover:bg-emerald-900/60 transition shadow-sm cursor-pointer" title="Load 4 official DMP corridors with precision OSRM road-following geometries" id="loadPrecisionBtn">
                                 🎯 Load Precision DMP Bans
                             </button>
-                            <button onclick="restoreOfficialBans()" class="px-2.5 py-1 text-xs rounded-lg font-semibold bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 transition shadow-sm" title="Restore the 4 authentic DMP VIP corridors (basic polygons)">
+                            <button onclick="restoreOfficialBans()" class="px-2.5 py-1 text-xs rounded-lg font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition shadow-sm cursor-pointer" title="Restore the 4 authentic DMP VIP corridors (basic polygons)">
                                 ↺ Restore DMP Corridors
                             </button>
-                            <button onclick="deactivateAllZones()" class="px-2.5 py-1 text-xs rounded-lg font-semibold bg-amber-50 text-amber-700 border border-amber-300 hover:bg-amber-100 transition shadow-sm" title="Deactivate all zones">
+                            <button onclick="deactivateAllZones()" class="px-2.5 py-1 text-xs rounded-lg font-semibold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition shadow-sm cursor-pointer" title="Deactivate all zones">
                                 ⏸ Deactivate All
                             </button>
-                            <button onclick="deleteInactiveZones()" class="px-2.5 py-1 text-xs rounded-lg font-semibold bg-rose-50 text-rose-700 border border-rose-300 hover:bg-rose-100 transition shadow-sm" title="Permanently delete all inactive ban entries">
+                            <button onclick="deleteInactiveZones()" class="px-2.5 py-1 text-xs rounded-lg font-semibold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-900/50 transition shadow-sm cursor-pointer" title="Permanently delete all inactive ban entries">
                                 ✕ Delete Inactive
                             </button>
-                            <button onclick="loadZonesTable()" class="text-xs text-amber-700 hover:underline font-semibold ml-1">Refresh</button>
+                            <button onclick="loadZonesTable()" class="text-xs text-amber-700 dark:text-amber-400 hover:underline font-semibold ml-1 cursor-pointer">Refresh</button>
                         </div>
                     </div>
                     <div class="overflow-x-auto">
                         <table class="w-full text-left text-xs">
-                            <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                            <thead class="bg-slate-50 dark:bg-slate-800/90 text-slate-600 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-700">
                                 <tr>
                                     <th class="px-4 py-3">Zone Name</th>
                                     <th class="px-4 py-3">Vehicles Banned</th>
@@ -219,9 +310,9 @@ $csrfToken = CsrfProtection::getToken();
                                     <th class="px-4 py-3 text-right">Action</th>
                                 </tr>
                             </thead>
-                            <tbody id="zonesTableBody" class="divide-y divide-slate-100 text-slate-700">
+                            <tbody id="zonesTableBody" class="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
                                 <tr>
-                                    <td colspan="5" class="text-center py-4 text-slate-400">Loading zones...</td>
+                                    <td colspan="5" class="text-center py-4 text-slate-400 dark:text-slate-500">Loading zones...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -238,31 +329,63 @@ $csrfToken = CsrfProtection::getToken();
         let drawnItems = null;
         let existingZonesLayer = null;
 
+        // Theme toggle functions for admin
+        function toggleTheme() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            try {
+                localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            } catch (e) {}
+            updateThemeIcons(isDark);
+            updateMapTiles(isDark);
+        }
+
+        function updateThemeIcons(isDark) {
+            const sunIcon = document.getElementById('adminThemeIconSun');
+            const moonIcon = document.getElementById('adminThemeIconMoon');
+            const toggleBtn = document.getElementById('adminThemeToggleBtn');
+            if (sunIcon && moonIcon) {
+                if (isDark) {
+                    sunIcon.classList.remove('hidden');
+                    moonIcon.classList.add('hidden');
+                } else {
+                    sunIcon.classList.add('hidden');
+                    moonIcon.classList.remove('hidden');
+                }
+            }
+            if (toggleBtn) {
+                const label = isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+                toggleBtn.setAttribute('title', label);
+                toggleBtn.setAttribute('aria-label', label);
+            }
+        }
+
+        function updateMapTiles(isDark) {
+            if (window.bharakotoAdminTileLayers && adminMap) {
+                const { light, dark } = window.bharakotoAdminTileLayers;
+                if (isDark) {
+                    if (adminMap.hasLayer(light)) adminMap.removeLayer(light);
+                    if (!adminMap.hasLayer(dark)) dark.addTo(adminMap);
+                } else {
+                    if (adminMap.hasLayer(dark)) adminMap.removeLayer(dark);
+                    if (!adminMap.hasLayer(light)) light.addTo(adminMap);
+                }
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
-            // Sync theme with main page (shared localStorage)
-            const stored = localStorage.getItem('theme');
-            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            const isDark = stored ? stored === 'dark' : prefersDark;
-            if (isDark) document.documentElement.classList.add('dark');
+            const isDark = document.documentElement.classList.contains('dark');
+            updateThemeIcons(isDark);
 
             initAdminMap();
             loadZonesTable();
 
-            // Listen for theme changes from main page - swap tile layers
+            // Listen for theme changes from other tabs / pages
             window.addEventListener('storage', (e) => {
                 if (e.key === 'theme') {
-                    const isDark = e.newValue === 'dark';
-                    document.documentElement.classList.toggle('dark', isDark);
-                    if (window.bharakotoAdminTileLayers && adminMap) {
-                        const { light, dark } = window.bharakotoAdminTileLayers;
-                        if (isDark) {
-                            if (adminMap.hasLayer(light)) adminMap.removeLayer(light);
-                            if (!adminMap.hasLayer(dark)) dark.addTo(adminMap);
-                        } else {
-                            if (adminMap.hasLayer(dark)) adminMap.removeLayer(dark);
-                            if (!adminMap.hasLayer(light)) light.addTo(adminMap);
-                        }
-                    }
+                    const isDarkTheme = e.newValue === 'dark';
+                    document.documentElement.classList.toggle('dark', isDarkTheme);
+                    updateThemeIcons(isDarkTheme);
+                    updateMapTiles(isDarkTheme);
                 }
             });
         });
@@ -283,12 +406,8 @@ $csrfToken = CsrfProtection::getToken();
                 attribution: '&copy; OpenStreetMap contributors &copy; CARTO | BharaKoto Admin'
             });
 
-            // Add appropriate layer based on current theme
-            if (document.documentElement.classList.contains('dark')) {
-                darkTiles.addTo(adminMap);
-            } else {
-                lightTiles.addTo(adminMap);
-            }
+            // Always use standard tiles, CSS filter handles dark mode
+            lightTiles.addTo(adminMap);
 
             // Store references for theme switching
             window.bharakotoAdminTileLayers = { light: lightTiles, dark: darkTiles };
@@ -435,43 +554,43 @@ $csrfToken = CsrfProtection::getToken();
         function renderZonesTable(zones) {
             const tbody = document.getElementById('zonesTableBody');
             if (zones.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-slate-400">No restricted zones recorded yet.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-slate-400 dark:text-slate-500">No restricted zones recorded yet.</td></tr>';
                 return;
             }
 
             tbody.innerHTML = '';
             zones.forEach(z => {
                 const tr = document.createElement('tr');
-                tr.className = 'hover:bg-slate-50 transition';
+                tr.className = 'hover:bg-slate-50 dark:hover:bg-slate-800/60 transition';
                 const isActive = parseInt(z.is_active) === 1;
                 const safeName = escapeHtml(z.zone_name).replace(/'/g, "\\'");
                 const bannedVehicles = escapeHtml(String(z.restricted_vehicles || '').replace(/,/g, ', '));
 
                 tr.innerHTML = `
                     <td class="px-4 py-3">
-                        <div class="font-bold text-slate-900">${escapeHtml(z.zone_name)}</div>
-                        <div class="text-[10px] text-slate-400">${escapeHtml(z.city || 'Dhaka')} • ${escapeHtml(z.restriction_type || 'Ban')}</div>
+                        <div class="font-bold text-slate-900 dark:text-slate-100">${escapeHtml(z.zone_name)}</div>
+                        <div class="text-[10px] text-slate-400 dark:text-slate-500">${escapeHtml(z.city || 'Dhaka')} • ${escapeHtml(z.restriction_type || 'Ban')}</div>
                     </td>
                     <td class="px-4 py-3">
-                        <span class="inline-block bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] font-medium">
+                        <span class="inline-block bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded text-[10px] font-medium border border-slate-200 dark:border-slate-700">
                             ${bannedVehicles}
                         </span>
                     </td>
-                    <td class="px-4 py-3 text-slate-500 text-[11px]">
+                    <td class="px-4 py-3 text-slate-500 dark:text-slate-400 text-[11px]">
                         ${z.active_start_time ? `${z.active_start_time} - ${z.active_end_time}` : '24 Hours'}
                     </td>
                     <td class="px-4 py-3">
-                        <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold ${isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}">
+                        <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold ${isActive ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800' : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-700'}">
                             ${isActive ? 'Active' : 'Inactive'}
                         </span>
                     </td>
                     <td class="px-4 py-3 text-right">
                         <div class="flex items-center justify-end gap-1.5">
-                            <button onclick="toggleZoneStatus(${z.id})" class="px-2.5 py-1 text-[11px] rounded font-semibold border ${isActive ? 'border-amber-300 text-amber-700 hover:bg-amber-50' : 'border-emerald-300 text-emerald-700 hover:bg-emerald-50'} transition cursor-pointer">
+                            <button onclick="toggleZoneStatus(${z.id})" class="px-2.5 py-1 text-[11px] rounded font-semibold border ${isActive ? 'border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/50' : 'border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/50'} transition cursor-pointer">
                                 ${isActive ? 'Deactivate' : 'Activate'}
                             </button>
-                            <button onclick="deleteZoneEntry(${z.id}, '${safeName}')" class="px-2 py-1 text-[11px] rounded font-semibold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition flex items-center gap-1 cursor-pointer shadow-2xs" title="Permanently delete this ban entry">
-                                <svg class="w-3 h-3 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            <button onclick="deleteZoneEntry(${z.id}, '${safeName}')" class="px-2 py-1 text-[11px] rounded font-semibold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-800 transition flex items-center gap-1 cursor-pointer shadow-2xs" title="Permanently delete this ban entry">
+                                <svg class="w-3 h-3 text-rose-600 dark:text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                 <span>Delete</span>
                             </button>
                         </div>
