@@ -88,8 +88,9 @@ $csrfToken = CsrfProtection::getToken();
         .dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
 
         /* Leaflet Dark Mode Overrides */
-        .dark .leaflet-tile {
-            filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
+        .dark #map { background: #020617; }
+        .dark .leaflet-tile-pane {
+            filter: brightness(0.9) invert(1) contrast(1.1) hue-rotate(180deg);
         }
         .dark .leaflet-popup-content-wrapper,
         .dark .leaflet-popup-tip {
