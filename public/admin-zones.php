@@ -1,8 +1,9 @@
 <?php
-require_once __DIR__ . '/../config/config.php';
+$config = require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../src/CsrfProtection.php';
 $csrfToken = CsrfProtection::getToken();
+$cartoKey = $config['apis']['carto_key'] ?? 'cb1_519h_1_c1d2124a1fd5cd6e4ca3528d';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -76,10 +77,7 @@ $csrfToken = CsrfProtection::getToken();
         .dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
 
         /* Leaflet & Leaflet.draw Dark Mode Overrides */
-        .dark #adminMap { background: #020617; }
-        .dark .leaflet-tile-pane {
-            filter: brightness(0.9) invert(1) contrast(1.1) hue-rotate(180deg);
-        }
+        .dark #adminMap { background: #121212; }
         .dark .leaflet-popup-content-wrapper,
         .dark .leaflet-popup-tip {
             background-color: #0f172a;
@@ -401,14 +399,20 @@ $csrfToken = CsrfProtection::getToken();
                 attribution: '&copy; OpenStreetMap | BharaKoto Admin'
             });
 
-            // Dark theme: CartoDB Dark Matter (free, no API key required)
-            const darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                maxZoom: 19,
+            // Dark theme: CartoDB Dark Matter with verified API key
+            const cartoKey = '<?php echo htmlspecialchars($cartoKey, ENT_QUOTES); ?>';
+            const darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png?key=' + encodeURIComponent(cartoKey), {
+                maxZoom: 20,
+                subdomains: 'abcd',
                 attribution: '&copy; OpenStreetMap contributors &copy; CARTO | BharaKoto Admin'
             });
 
-            // Always use standard tiles, CSS filter handles dark mode
-            lightTiles.addTo(adminMap);
+            // Add appropriate layer based on current theme
+            if (document.documentElement.classList.contains('dark')) {
+                darkTiles.addTo(adminMap);
+            } else {
+                lightTiles.addTo(adminMap);
+            }
 
             // Store references for theme switching
             window.bharakotoAdminTileLayers = { light: lightTiles, dark: darkTiles };

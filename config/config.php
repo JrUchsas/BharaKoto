@@ -67,6 +67,9 @@ return [
         'weather_dhaka_coords' => [
             'lat' => 23.8103,
             'lon' => 90.4125,
-        ]
+        ],
+
+        // CARTO Basemaps API: https://carto.com/basemaps/
+        'carto_key' => $_ENV['CARTO_API_KEY'] ?? 'cb1_519h_1_c1d2124a1fd5cd6e4ca3528d',
     ]
 ];
