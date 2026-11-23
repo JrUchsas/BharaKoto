@@ -1,9 +1,8 @@
 <?php
-$config = require_once __DIR__ . '/../config/config.php';
+require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../src/CsrfProtection.php';
 $csrfToken = CsrfProtection::getToken();
-$cartoKey = $config['apis']['carto_key'] ?? 'cb1_519h_1_c1d2124a1fd5cd6e4ca3528d';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -89,7 +88,10 @@ $cartoKey = $config['apis']['carto_key'] ?? 'cb1_519h_1_c1d2124a1fd5cd6e4ca3528d
         .dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
 
         /* Leaflet Dark Mode Overrides */
-        .dark #map { background: #121212; }
+        .dark #map { background: #090d16; }
+        .dark .leaflet-tile-pane {
+            filter: brightness(0.9) invert(1) contrast(1.15) hue-rotate(180deg);
+        }
         .dark .leaflet-popup-content-wrapper,
         .dark .leaflet-popup-tip {
             background-color: #0f172a;
@@ -680,16 +682,8 @@ $cartoKey = $config['apis']['carto_key'] ?? 'cb1_519h_1_c1d2124a1fd5cd6e4ca3528d
         }
 
         function updateMapTiles(isDark) {
-            if (window.bharakotoTileLayers && map) {
-                const { light, dark } = window.bharakotoTileLayers;
-                if (isDark) {
-                    if (map.hasLayer(light)) map.removeLayer(light);
-                    if (!map.hasLayer(dark)) dark.addTo(map);
-                } else {
-                    if (map.hasLayer(dark)) map.removeLayer(dark);
-                    if (!map.hasLayer(light)) light.addTo(map);
-                }
-            }
+            // Dark mode is handled seamlessly via CSS filter on .dark .leaflet-tile-pane
+            // No external API key or network tile swap required
         }
 
         function updateChartTheme(isDark) {
@@ -717,29 +711,15 @@ $cartoKey = $config['apis']['carto_key'] ?? 'cb1_519h_1_c1d2124a1fd5cd6e4ca3528d
             // Center of Dhaka (Farmgate/Agargaon area)
             map = L.map('map').setView([23.7680, 90.3850], 13);
 
-            // Light theme: OSM standard tiles
-            const lightTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            // OpenStreetMap standard tiles (100% free, zero API key required)
+            const mapTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 maxZoom: 19,
                 attribution: '&copy; OpenStreetMap contributors | BharaKoto Dhaka'
             });
-
-            // Dark theme: CartoDB Dark Matter with verified API key
-            const cartoKey = '<?php echo htmlspecialchars($cartoKey, ENT_QUOTES); ?>';
-            const darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png?key=' + encodeURIComponent(cartoKey), {
-                maxZoom: 20,
-                subdomains: 'abcd',
-                attribution: '&copy; OpenStreetMap contributors &copy; CARTO | BharaKoto Dhaka'
-            });
-
-            // Add appropriate layer based on current theme
-            if (document.documentElement.classList.contains('dark')) {
-                darkTiles.addTo(map);
-            } else {
-                lightTiles.addTo(map);
-            }
+            mapTiles.addTo(map);
 
             // Store references for theme switching
-            window.bharakotoTileLayers = { light: lightTiles, dark: darkTiles };
+            window.bharakotoTileLayers = { standard: mapTiles };
 
             zonesLayerGroup = L.layerGroup().addTo(map);
 
