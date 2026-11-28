@@ -116,35 +116,34 @@ $nodes = [
 ];
 
 try {
-    $pdo = Database::getConnection();
-    $stmt = $pdo->prepare("
-        INSERT INTO popular_nodes (name_en, name_bn, area_thana, latitude, longitude, node_type, barikoi_place_id)
-        SELECT :name_en, :name_bn, :area, :lat, :lng, :type, :bk_id
-        WHERE NOT EXISTS (
-            SELECT 1 FROM popular_nodes WHERE name_en = :check_en
-        )
-    ");
+    $db = Database::getConnection();
+    $nodesCol = $db->selectCollection('popular_nodes');
 
     $inserted = 0;
     foreach ($nodes as $n) {
-        $bkId = 'BK-DH-' . strtoupper(substr(preg_replace('/[^a-zA-Z]/', '', $n['name_en']), 0, 8)) . '-' . rand(10, 99);
-        $stmt->execute([
-            ':name_en' => $n['name_en'],
-            ':name_bn' => $n['name_bn'],
-            ':area' => $n['area_thana'],
-            ':lat' => $n['lat'],
-            ':lng' => $n['lng'],
-            ':type' => $n['type'],
-            ':bk_id' => $bkId,
-            ':check_en' => $n['name_en']
-        ]);
-        if ($stmt->rowCount() > 0) {
-            $inserted++;
+        if ($nodesCol->findOne(['name_en' => $n['name_en']])) {
+            continue;
         }
+        $bkId = 'BK-DH-' . strtoupper(substr(preg_replace('/[^a-zA-Z]/', '', $n['name_en']), 0, 8)) . '-' . rand(10, 99);
+        $nodesCol->insertOne([
+            'id' => Database::nextSequence('popular_nodes'),
+            'name_en' => $n['name_en'],
+            'name_bn' => $n['name_bn'],
+            'area_thana' => $n['area_thana'],
+            'barikoi_place_id' => $bkId,
+            'latitude' => (float)$n['lat'],
+            'longitude' => (float)$n['lng'],
+            'location' => [
+                'type' => 'Point',
+                'coordinates' => [(float)$n['lng'], (float)$n['lat']],
+            ],
+            'node_type' => $n['type'],
+        ]);
+        $inserted++;
     }
 
-    $total = $pdo->query("SELECT COUNT(*) FROM popular_nodes")->fetchColumn();
-    echo "[+] Done! Added {$inserted} new landmarks. Total Dhaka nodes in DB: {$total}\n";
+    $total = $nodesCol->countDocuments();
+    echo "[+] Done! Added {$inserted} new landmarks. Total Dhaka nodes in MongoDB: {$total}\n";
 
 } catch (Throwable $e) {
     echo "[!] Error seeding nodes: " . $e->getMessage() . "\n";

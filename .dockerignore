@@ -1,0 +1,10 @@
+.git
+.gitignore
+.env
+.env.local
+.planning
+vendor
+storage
+*.log
+Thumbs.db
+.DS_Store

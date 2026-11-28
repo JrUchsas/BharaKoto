@@ -4,7 +4,10 @@
     "type": "project",
     "license": "MIT",
     "require": {
-        "php": ">=8.1"
+        "php": ">=8.1",
+        "ext-mongodb": "*",
+        "ext-curl": "*",
+        "ext-json": "*"
     },
     "autoload": {
         "classmap": [

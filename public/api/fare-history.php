@@ -13,13 +13,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 require_once __DIR__ . '/../../config/config.php';
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../src/FareEstimatorService.php';
 require_once __DIR__ . '/../../src/RateLimiter.php';
 
 // Rate limiting: 30 requests per minute per IP for fare history
 RateLimiter::enforce('fare-history', 30, 60);
 
 try {
-    $pdo = Database::getConnection();
+    $db = Database::getConnection();
+    $faresCol = $db->selectCollection('crowdsourced_fares');
+    $usersCol = $db->selectCollection('users');
+    $service = new FareEstimatorService($db);
 
     // Input parameters
     $originLat  = filter_var($_GET['origin_lat'] ?? null, FILTER_VALIDATE_FLOAT);
@@ -31,7 +35,7 @@ try {
     $days       = min(365, max(1, (int)($_GET['days'] ?? 90)));
     $limit      = min(100, max(5, (int)($_GET['limit'] ?? 50)));
 
-    if ($originLat === false || $originLng === false || $destLat === false || $destLng === false) {
+    if ($originLat === false || $originLng === false || $destLat === false || $destLng === false || $radiusKm === false) {
         http_response_code(400);
         echo json_encode([
             'status' => 'error',
@@ -50,183 +54,145 @@ try {
         exit;
     }
 
-    // Build query with spherical distance matching for both origin AND destination
-    // Using the same approach as FareEstimatorService::getCrowdsourcedStats
-    $sql = "
-        SELECT
-            cf.id,
-            cf.fare_paid_bdt,
-            cf.api_distance_km,
-            cf.weather_condition,
-            cf.traffic_condition,
-            cf.is_peak_hour,
-            cf.upvotes,
-            cf.downvotes,
-            cf.created_at,
-            COALESCE(u.name, 'Commuter') as commuter_name,
-            cf.origin_name,
-            cf.dest_name,
-            (6371 * ACOS(LEAST(1.0, GREATEST(-1.0,
-                COS(RADIANS(:o_lat)) * COS(RADIANS(cf.origin_lat)) * COS(RADIANS(cf.origin_lng) - RADIANS(:o_lng)) +
-                SIN(RADIANS(:o_lat)) * SIN(RADIANS(cf.origin_lat))
-            )))) as origin_dist_km,
-            (6371 * ACOS(LEAST(1.0, GREATEST(-1.0,
-                COS(RADIANS(:d_lat)) * COS(RADIANS(cf.dest_lat)) * COS(RADIANS(cf.dest_lng) - RADIANS(:d_lng)) +
-                SIN(RADIANS(:d_lat)) * SIN(RADIANS(cf.dest_lat))
-            )))) as dest_dist_km
-        FROM crowdsourced_fares cf
-        LEFT JOIN users u ON cf.user_id = u.id
-        WHERE cf.vehicle_type = :vehicle
-          AND cf.status = 'approved'
-          AND cf.created_at >= DATE_SUB(NOW(), INTERVAL :days DAY)
-        HAVING origin_dist_km <= :radius AND dest_dist_km <= :radius
-        ORDER BY cf.created_at DESC
-        LIMIT :limit
-    ";
+    $cutoff = MongoDatabase::utcDateTime(time() - ($days * 86400));
 
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindValue(':vehicle', $vehicle, PDO::PARAM_STR);
-    $stmt->bindValue(':o_lat', $originLat, PDO::PARAM_STR);
-    $stmt->bindValue(':o_lng', $originLng, PDO::PARAM_STR);
-    $stmt->bindValue(':d_lat', $destLat, PDO::PARAM_STR);
-    $stmt->bindValue(':d_lng', $destLng, PDO::PARAM_STR);
-    $stmt->bindValue(':radius', $radiusKm, PDO::PARAM_STR);
-    $stmt->bindValue(':days', $days, PDO::PARAM_INT);
-    $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-    $stmt->execute();
-
-    $rows = $stmt->fetchAll();
-
-    // Also get aggregate stats
-    $statsSql = "
-        SELECT
-            COUNT(*) as total_records,
-            COALESCE(AVG(fare_paid_bdt), 0) as avg_fare,
-            COALESCE(MIN(fare_paid_bdt), 0) as min_fare,
-            COALESCE(MAX(fare_paid_bdt), 0) as max_fare,
-            COALESCE(STDDEV(fare_paid_bdt), 0) as stddev_fare,
-            COALESCE(AVG(CASE WHEN is_peak_hour = 1 THEN fare_paid_bdt END), 0) as avg_peak_fare,
-            COALESCE(AVG(CASE WHEN is_peak_hour = 0 THEN fare_paid_bdt END), 0) as avg_offpeak_fare,
-            COALESCE(AVG(CASE WHEN weather_condition = 'rain' THEN fare_paid_bdt END), 0) as avg_rain_fare,
-            COALESCE(AVG(CASE WHEN traffic_condition = 'heavy_jam' THEN fare_paid_bdt END), 0) as avg_heavy_jam_fare
-        FROM crowdsourced_fares cf
-        WHERE cf.vehicle_type = :vehicle
-          AND cf.status = 'approved'
-          AND cf.created_at >= DATE_SUB(NOW(), INTERVAL :days DAY)
-          AND (6371 * ACOS(LEAST(1.0, GREATEST(-1.0,
-              COS(RADIANS(:o_lat)) * COS(RADIANS(cf.origin_lat)) * COS(RADIANS(cf.origin_lng) - RADIANS(:o_lng)) +
-              SIN(RADIANS(:o_lat)) * SIN(RADIANS(cf.origin_lat))
-          )))) <= :radius
-          AND (6371 * ACOS(LEAST(1.0, GREATEST(-1.0,
-              COS(RADIANS(:d_lat)) * COS(RADIANS(cf.dest_lat)) * COS(RADIANS(cf.dest_lng) - RADIANS(:d_lng)) +
-              SIN(RADIANS(:d_lat)) * SIN(RADIANS(cf.dest_lat))
-          )))) <= :radius
-    ";
-
-    $statsStmt = $pdo->prepare($statsSql);
-    $statsStmt->execute([
-        ':vehicle' => $vehicle,
-        ':o_lat' => $originLat,
-        ':o_lng' => $originLng,
-        ':d_lat' => $destLat,
-        ':d_lng' => $destLng,
-        ':radius' => $radiusKm,
-        ':days' => $days,
+    // Query nearby origin records using 2dsphere index
+    $candidates = $faresCol->aggregate([
+        [
+            '$geoNear' => [
+                'near' => [
+                    'type' => 'Point',
+                    'coordinates' => [$originLng, $originLat],
+                ],
+                'distanceField' => 'origin_dist_m',
+                'maxDistance' => $radiusKm * 1000.0,
+                'spherical' => true,
+                'query' => [
+                    'vehicle_type' => $vehicle,
+                    'status' => 'approved',
+                    'created_at' => ['$gte' => $cutoff],
+                ],
+            ],
+        ],
+        ['$sort' => ['created_at' => -1]],
     ]);
-    $stats = $statsStmt->fetch();
 
-    // Get weekly trend data for charting
-    $trendSql = "
-        SELECT
-            DATE(created_at) as fare_date,
-            COUNT(*) as submissions,
-            ROUND(AVG(fare_paid_bdt), 2) as avg_fare,
-            MIN(fare_paid_bdt) as min_fare,
-            MAX(fare_paid_bdt) as max_fare
-        FROM crowdsourced_fares cf
-        WHERE cf.vehicle_type = :vehicle
-          AND cf.status = 'approved'
-          AND cf.created_at >= DATE_SUB(NOW(), INTERVAL :days DAY)
-          AND (6371 * ACOS(LEAST(1.0, GREATEST(-1.0,
-              COS(RADIANS(:o_lat)) * COS(RADIANS(cf.origin_lat)) * COS(RADIANS(cf.origin_lng) - RADIANS(:o_lng)) +
-              SIN(RADIANS(:o_lat)) * SIN(RADIANS(cf.origin_lat))
-          )))) <= :radius
-          AND (6371 * ACOS(LEAST(1.0, GREATEST(-1.0,
-              COS(RADIANS(:d_lat)) * COS(RADIANS(cf.dest_lat)) * COS(RADIANS(cf.dest_lng) - RADIANS(:d_lng)) +
-              SIN(RADIANS(:d_lat)) * SIN(RADIANS(cf.dest_lat))
-          )))) <= :radius
-        GROUP BY DATE(created_at)
-        ORDER BY fare_date ASC
-    ";
+    // Filter matching destinations within radiusKm
+    $matched = [];
+    foreach ($candidates as $row) {
+        $dCoords = $row['dest_location']['coordinates'] ?? null;
+        $dLat = (float)($row['dest_lat'] ?? ($dCoords[1] ?? 0));
+        $dLng = (float)($row['dest_lng'] ?? ($dCoords[0] ?? 0));
+        $destDistKm = $service->calculateHaversineKm($destLat, $destLng, $dLat, $dLng);
 
-    $trendStmt = $pdo->prepare($trendSql);
-    $trendStmt->execute([
-        ':vehicle' => $vehicle,
-        ':o_lat' => $originLat,
-        ':o_lng' => $originLng,
-        ':d_lat' => $destLat,
-        ':d_lng' => $destLng,
-        ':radius' => $radiusKm,
-        ':days' => $days,
-    ]);
-    $trends = $trendStmt->fetchAll();
+        if ($destDistKm <= $radiusKm) {
+            $row['_origin_dist_km'] = ((float)($row['origin_dist_m'] ?? 0)) / 1000.0;
+            $row['_dest_dist_km'] = $destDistKm;
+            $matched[] = $row;
+        }
+    }
 
-    // Get fare distribution for histogram
-    $distSql = "
-        SELECT
-            FLOOR(fare_paid_bdt / 10) * 10 as fare_bucket,
-            COUNT(*) as count
-        FROM crowdsourced_fares cf
-        WHERE cf.vehicle_type = :vehicle
-          AND cf.status = 'approved'
-          AND cf.created_at >= DATE_SUB(NOW(), INTERVAL :days DAY)
-          AND (6371 * ACOS(LEAST(1.0, GREATEST(-1.0,
-              COS(RADIANS(:o_lat)) * COS(RADIANS(cf.origin_lat)) * COS(RADIANS(cf.origin_lng) - RADIANS(:o_lng)) +
-              SIN(RADIANS(:o_lat)) * SIN(RADIANS(cf.origin_lat))
-          )))) <= :radius
-          AND (6371 * ACOS(LEAST(1.0, GREATEST(-1.0,
-              COS(RADIANS(:d_lat)) * COS(RADIANS(cf.dest_lat)) * COS(RADIANS(cf.dest_lng) - RADIANS(:d_lng)) +
-              SIN(RADIANS(:d_lat)) * SIN(RADIANS(cf.dest_lat))
-          )))) <= :radius
-        GROUP BY fare_bucket
-        ORDER BY fare_bucket ASC
-    ";
+    // Batch resolve commuter names
+    $limitedRows = array_slice($matched, 0, $limit);
+    $userIds = array_values(array_unique(array_filter(array_map(
+        fn($d) => isset($d['user_id']) ? (int)$d['user_id'] : null,
+        $limitedRows
+    ))));
+    $userMap = [];
+    if (!empty($userIds)) {
+        foreach ($usersCol->find(['id' => ['$in' => $userIds]]) as $u) {
+            $userMap[(int)$u['id']] = $u['name'] ?? 'Commuter';
+        }
+    }
 
-    $distStmt = $pdo->prepare($distSql);
-    $distStmt->execute([
-        ':vehicle' => $vehicle,
-        ':o_lat' => $originLat,
-        ':o_lng' => $originLng,
-        ':d_lat' => $destLat,
-        ':d_lng' => $destLng,
-        ':radius' => $radiusKm,
-        ':days' => $days,
-    ]);
-    $distribution = $distStmt->fetchAll();
-
-    // Format response
     $formattedRows = [];
-    foreach ($rows as $row) {
+    foreach ($limitedRows as $row) {
+        $uid = isset($row['user_id']) ? (int)$row['user_id'] : null;
         $formattedRows[] = [
-            'id' => (int)$row['id'],
+            'id' => (int)($row['id'] ?? 0),
             'fare_paid_bdt' => (float)$row['fare_paid_bdt'],
-            'api_distance_km' => (float)$row['api_distance_km'],
-            'weather_condition' => $row['weather_condition'],
-            'traffic_condition' => $row['traffic_condition'],
-            'is_peak_hour' => (bool)$row['is_peak_hour'],
-            'upvotes' => (int)$row['upvotes'],
-            'downvotes' => (int)$row['downvotes'],
-            'created_at' => $row['created_at'],
-            'commuter_name' => $row['commuter_name'],
-            'origin_name' => $row['origin_name'],
-            'dest_name' => $row['dest_name'],
-            'origin_distance_m' => round((float)$row['origin_dist_km'] * 1000),
-            'dest_distance_m' => round((float)$row['dest_dist_km'] * 1000),
+            'api_distance_km' => (float)($row['api_distance_km'] ?? 0),
+            'weather_condition' => $row['weather_condition'] ?? 'clear',
+            'traffic_condition' => $row['traffic_condition'] ?? 'normal',
+            'is_peak_hour' => !empty($row['is_peak_hour']),
+            'upvotes' => (int)($row['upvotes'] ?? 0),
+            'downvotes' => (int)($row['downvotes'] ?? 0),
+            'created_at' => $row['created_at'] ?? null,
+            'commuter_name' => ($uid !== null && isset($userMap[$uid]))
+                ? $userMap[$uid]
+                : ($row['commuter_name'] ?? 'Commuter'),
+            'origin_name' => $row['origin_name'] ?? '',
+            'dest_name' => $row['dest_name'] ?? '',
+            'origin_distance_m' => round($row['_origin_dist_km'] * 1000),
+            'dest_distance_m' => round($row['_dest_dist_km'] * 1000),
         ];
     }
 
-    // Calculate 5-taka rounded average for display
-    $roundedAvg = $stats['total_records'] > 0 ? (float)(round(((float)$stats['avg_fare']) / 5.0) * 5.0) : null;
+    // Compute aggregate summary, daily trends, and 10-BDT histogram
+    $totalRecords = count($matched);
+    $allFares = [];
+    $peakFares = [];
+    $offpeakFares = [];
+    $rainFares = [];
+    $heavyJamFares = [];
+    $trendBuckets = [];
+    $histBuckets = [];
+
+    foreach ($matched as $row) {
+        $fare = (float)$row['fare_paid_bdt'];
+        $allFares[] = $fare;
+
+        if (!empty($row['is_peak_hour'])) {
+            $peakFares[] = $fare;
+        } else {
+            $offpeakFares[] = $fare;
+        }
+        if (($row['weather_condition'] ?? '') === 'rain') {
+            $rainFares[] = $fare;
+        }
+        if (($row['traffic_condition'] ?? '') === 'heavy_jam') {
+            $heavyJamFares[] = $fare;
+        }
+
+        $dateStr = substr((string)($row['created_at'] ?? date('Y-m-d')), 0, 10);
+        if (!isset($trendBuckets[$dateStr])) {
+            $trendBuckets[$dateStr] = [];
+        }
+        $trendBuckets[$dateStr][] = $fare;
+
+        $bucket = (int)(floor($fare / 10) * 10);
+        $histBuckets[$bucket] = ($histBuckets[$bucket] ?? 0) + 1;
+    }
+
+    $rawAvg = $totalRecords > 0 ? array_sum($allFares) / $totalRecords : 0.0;
+    $roundedAvg = $totalRecords > 0 ? (float)(round($rawAvg / 5.0) * 5.0) : null;
+
+    $stddev = 0.0;
+    if ($totalRecords > 1) {
+        $variance = array_sum(array_map(fn($v) => ($v - $rawAvg) ** 2, $allFares)) / $totalRecords;
+        $stddev = round(sqrt($variance), 2);
+    }
+
+    ksort($trendBuckets);
+    $trends = [];
+    foreach ($trendBuckets as $date => $vals) {
+        $trends[] = [
+            'date' => $date,
+            'submissions' => count($vals),
+            'avg_fare' => round(array_sum($vals) / count($vals), 2),
+            'min_fare' => min($vals),
+            'max_fare' => max($vals),
+        ];
+    }
+
+    ksort($histBuckets);
+    $distribution = [];
+    foreach ($histBuckets as $bucket => $count) {
+        $distribution[] = [
+            'bucket' => (int)$bucket,
+            'count' => (int)$count,
+        ];
+    }
 
     echo json_encode([
         'status' => 'success',
@@ -236,28 +202,19 @@ try {
             'days' => $days,
         ],
         'summary' => [
-            'total_records' => (int)$stats['total_records'],
+            'total_records' => $totalRecords,
             'average_fare_bdt' => $roundedAvg,
-            'raw_average_bdt' => $stats['total_records'] > 0 ? round((float)$stats['avg_fare'], 2) : null,
-            'min_fare_bdt' => $stats['total_records'] > 0 ? (float)$stats['min_fare'] : null,
-            'max_fare_bdt' => $stats['total_records'] > 0 ? (float)$stats['max_fare'] : null,
-            'stddev_bdt' => $stats['total_records'] > 1 ? round((float)$stats['stddev_fare'], 2) : 0,
-            'avg_peak_fare_bdt' => $stats['avg_peak_fare'] > 0 ? round((float)$stats['avg_peak_fare'], 2) : null,
-            'avg_offpeak_fare_bdt' => $stats['avg_offpeak_fare'] > 0 ? round((float)$stats['avg_offpeak_fare'], 2) : null,
-            'avg_rain_fare_bdt' => $stats['avg_rain_fare'] > 0 ? round((float)$stats['avg_rain_fare'], 2) : null,
-            'avg_heavy_jam_fare_bdt' => $stats['avg_heavy_jam_fare'] > 0 ? round((float)$stats['avg_heavy_jam_fare'], 2) : null,
+            'raw_average_bdt' => $totalRecords > 0 ? round($rawAvg, 2) : null,
+            'min_fare_bdt' => $totalRecords > 0 ? min($allFares) : null,
+            'max_fare_bdt' => $totalRecords > 0 ? max($allFares) : null,
+            'stddev_bdt' => $stddev,
+            'avg_peak_fare_bdt' => !empty($peakFares) ? round(array_sum($peakFares) / count($peakFares), 2) : null,
+            'avg_offpeak_fare_bdt' => !empty($offpeakFares) ? round(array_sum($offpeakFares) / count($offpeakFares), 2) : null,
+            'avg_rain_fare_bdt' => !empty($rainFares) ? round(array_sum($rainFares) / count($rainFares), 2) : null,
+            'avg_heavy_jam_fare_bdt' => !empty($heavyJamFares) ? round(array_sum($heavyJamFares) / count($heavyJamFares), 2) : null,
         ],
-        'trends' => array_map(fn($t) => [
-            'date' => $t['fare_date'],
-            'submissions' => (int)$t['submissions'],
-            'avg_fare' => (float)$t['avg_fare'],
-            'min_fare' => (float)$t['min_fare'],
-            'max_fare' => (float)$t['max_fare'],
-        ], $trends),
-        'distribution' => array_map(fn($d) => [
-            'bucket' => (int)$d['fare_bucket'],
-            'count' => (int)$d['count'],
-        ], $distribution),
+        'trends' => $trends,
+        'distribution' => $distribution,
         'records' => $formattedRows,
     ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 

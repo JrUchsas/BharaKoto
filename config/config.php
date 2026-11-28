@@ -9,6 +9,11 @@ declare(strict_types=1);
 // Set Dhaka Timezone (UTC+6)
 date_default_timezone_set('Asia/Dhaka');
 
+$autoloadFile = __DIR__ . '/../vendor/autoload.php';
+if (file_exists($autoloadFile)) {
+    require_once $autoloadFile;
+}
+
 // Load environment variables if .env file exists
 $envFile = __DIR__ . '/../.env';
 if (file_exists($envFile)) {
@@ -30,13 +35,24 @@ if (file_exists($envFile)) {
     }
 }
 
+$parseBool = static function (mixed $value, bool $default): bool {
+    if ($value === null || $value === '') {
+        return $default;
+    }
+    if (is_bool($value)) {
+        return $value;
+    }
+    $parsed = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+    return $parsed ?? $default;
+};
+
 // Return unified configuration array
 return [
     'app' => [
         'name' => 'BharaKoto? BD CNG & Rickshaw Fare Estimator',
         'env' => $_ENV['APP_ENV'] ?? 'development',
-        'debug' => (bool)($_ENV['APP_DEBUG'] ?? true),
-        'demo_mode' => (bool)($_ENV['DEMO_MODE'] ?? true),
+        'debug' => $parseBool($_ENV['APP_DEBUG'] ?? null, true),
+        'demo_mode' => $parseBool($_ENV['DEMO_MODE'] ?? null, true),
         'timezone' => 'Asia/Dhaka',
         'default_center' => [
             'lat' => 23.8103,
@@ -45,6 +61,11 @@ return [
             'city' => 'Dhaka'
         ]
     ],
+    'mongodb' => [
+        'uri' => $_ENV['MONGODB_URI'] ?? 'mongodb://127.0.0.1:27017',
+        'database' => $_ENV['MONGODB_DB'] ?? $_ENV['DB_NAME'] ?? 'bd_fare_estimator',
+    ],
+    // Legacy MySQL config (used only by database/migrate_mysql_to_mongodb.php)
     'db' => [
         'host' => $_ENV['DB_HOST'] ?? '127.0.0.1',
         'port' => (int)($_ENV['DB_PORT'] ?? 3306),
@@ -58,10 +79,10 @@ return [
         // OpenRouteService: https://openrouteservice.org/
         // If empty or DEMO_MODE, smart simulated Dhaka routing is used
         'ors_key' => $_ENV['ORS_API_KEY'] ?? 'DEMO_MODE',
-        
+
         // Barikoi Places API: https://barikoi.com/
         'barikoi_key' => $_ENV['BARIKOI_API_KEY'] ?? '',
-        
+
         // OpenWeatherMap API: https://openweathermap.org/
         'openweather_key' => $_ENV['OPENWEATHER_API_KEY'] ?? '',
         'weather_dhaka_coords' => [

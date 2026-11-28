@@ -754,15 +754,15 @@ $csrfToken = CsrfProtection::getToken();
                     popupContent.className = 'p-1 text-xs space-y-2 min-w-[200px]';
 
                     const titleDiv = document.createElement('div');
-                    titleDiv.className = 'font-bold text-slate-800 flex items-center gap-1';
+                    titleDiv.className = 'font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1';
                     titleDiv.textContent = resolvedName;
 
                     const coordsDiv = document.createElement('div');
-                    coordsDiv.className = 'text-[11px] text-slate-500 font-mono';
+                    coordsDiv.className = 'text-[11px] text-slate-500 dark:text-slate-300 font-mono';
                     coordsDiv.textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
 
                     const btnContainer = document.createElement('div');
-                    btnContainer.className = 'flex flex-col gap-1.5 pt-1 border-t border-slate-100';
+                    btnContainer.className = 'flex flex-col gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-700';
 
                     if (!hasOrigin) {
                         const oBtn = document.createElement('button');
@@ -789,8 +789,8 @@ $csrfToken = CsrfProtection::getToken();
                     if (hasOrigin || hasDest) {
                         const cBtn = document.createElement('button');
                         cBtn.type = 'button';
-                        cBtn.className = 'px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded font-semibold text-xs w-full flex items-center justify-center gap-1.5 cursor-pointer transition';
-                        cBtn.innerHTML = '<svg class="w-3.5 h-3.5 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg> Clear All Points';
+                        cBtn.className = 'px-3 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/70 text-rose-700 dark:text-rose-200 border border-rose-300 dark:border-rose-800 rounded font-semibold text-xs w-full flex items-center justify-center gap-1.5 cursor-pointer transition';
+                        cBtn.innerHTML = '<svg class="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg> Clear All Points';
                         cBtn.onclick = () => {
                             clearAllRoutePoints();
                             map.closePopup();
@@ -828,9 +828,9 @@ $csrfToken = CsrfProtection::getToken();
 
                             // Interactive road hover tooltip
                             polyLayer.bindTooltip(`
-                                <div class="text-xs font-semibold text-slate-900">
-                                    <span class="text-red-600 font-bold">🚫 ${escapeHtml(zone.zone_name)}</span>
-                                    <div class="text-[10px] text-slate-500 font-normal">Banned: ${escapeHtml(zone.restricted_vehicles.replace(/_/g, ' '))}</div>
+                                <div class="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                                    <span class="text-red-600 dark:text-red-400 font-bold">🚫 ${escapeHtml(zone.zone_name)}</span>
+                                    <div class="text-[10px] text-slate-500 dark:text-slate-300 font-normal">Banned: ${escapeHtml(zone.restricted_vehicles.replace(/_/g, ' '))}</div>
                                 </div>
                             `, { sticky: true, className: 'custom-road-tooltip' });
 
@@ -852,13 +852,13 @@ $csrfToken = CsrfProtection::getToken();
 
                             const popupHtml = `
                                 <div class="text-xs space-y-1 p-1 max-w-xs">
-                                    <div class="flex items-center gap-1 text-red-600 font-bold">
+                                    <div class="flex items-center gap-1 text-red-600 dark:text-red-400 font-bold">
                                         <span>🚫 VIP Restricted Road</span>
                                     </div>
-                                    <div class="font-bold text-slate-900 text-sm">${escapeHtml(zone.zone_name)}</div>
-                                    <div class="text-slate-600"><span class="font-semibold">Banned for:</span> ${escapeHtml(zone.restricted_vehicles.replace(/_/g, ' '))}</div>
-                                    ${zone.active_start_time ? `<div class="text-slate-500"><span class="font-semibold">Hours:</span> ${zone.active_start_time} - ${zone.active_end_time}</div>` : '<div class="text-slate-500"><span class="font-semibold">Hours:</span> 24 Hours</div>'}
-                                    ${zone.transfer_hint ? `<div class="bg-red-50 text-red-800 p-2 rounded-lg mt-1 border border-red-200">${escapeHtml(zone.transfer_hint)}</div>` : ''}
+                                    <div class="font-bold text-slate-900 dark:text-slate-100 text-sm">${escapeHtml(zone.zone_name)}</div>
+                                    <div class="text-slate-600 dark:text-slate-300"><span class="font-semibold">Banned for:</span> ${escapeHtml(zone.restricted_vehicles.replace(/_/g, ' '))}</div>
+                                    ${zone.active_start_time ? `<div class="text-slate-500 dark:text-slate-400"><span class="font-semibold">Hours:</span> ${zone.active_start_time} - ${zone.active_end_time}</div>` : '<div class="text-slate-500 dark:text-slate-400"><span class="font-semibold">Hours:</span> 24 Hours</div>'}
+                                    ${zone.transfer_hint ? `<div class="bg-red-50 dark:bg-red-950/60 text-red-800 dark:text-red-200 p-2 rounded-lg mt-1 border border-red-200 dark:border-red-800">${escapeHtml(zone.transfer_hint)}</div>` : ''}
                                 </div>
                             `;
                             polyLayer.bindPopup(popupHtml, { className: 'custom-popup' });
@@ -910,16 +910,16 @@ $csrfToken = CsrfProtection::getToken();
         function getOriginPopupHtml(name) {
             return `
                 <div class="p-1 text-xs space-y-1.5 min-w-[180px]">
-                    <div class="font-bold text-emerald-700 flex items-center justify-between">
+                    <div class="font-bold text-emerald-700 dark:text-emerald-400 flex items-center justify-between">
                         <span class="flex items-center gap-1">🟢 Origin</span>
                         <span class="text-[10px] text-slate-400 font-normal">Location</span>
                     </div>
-                    <div class="font-semibold text-slate-800 leading-tight">${escapeHtml(name)}</div>
-                    <div class="flex items-center gap-1.5 pt-1.5 border-t border-slate-100">
-                        <button onclick="clearOrigin()" class="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded text-[11px] font-bold flex items-center gap-0.5 transition cursor-pointer">
+                    <div class="font-semibold text-slate-800 dark:text-slate-100 leading-tight">${escapeHtml(name)}</div>
+                    <div class="flex items-center gap-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-700">
+                        <button onclick="clearOrigin()" class="px-2 py-1 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/70 text-rose-700 dark:text-rose-200 border border-rose-200 dark:border-rose-800 rounded text-[11px] font-bold flex items-center gap-0.5 transition cursor-pointer">
                             ✕ Remove
                         </button>
-                        <button onclick="clearAllRoutePoints()" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded text-[11px] font-medium transition cursor-pointer">
+                        <button onclick="clearAllRoutePoints()" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded text-[11px] font-medium transition cursor-pointer">
                             Clear Both
                         </button>
                     </div>
@@ -931,16 +931,16 @@ $csrfToken = CsrfProtection::getToken();
         function getDestPopupHtml(name) {
             return `
                 <div class="p-1 text-xs space-y-1.5 min-w-[180px]">
-                    <div class="font-bold text-red-600 flex items-center justify-between">
+                    <div class="font-bold text-red-600 dark:text-red-400 flex items-center justify-between">
                         <span class="flex items-center gap-1">🔴 Destination</span>
                         <span class="text-[10px] text-slate-400 font-normal">Location</span>
                     </div>
-                    <div class="font-semibold text-slate-800 leading-tight">${escapeHtml(name)}</div>
-                    <div class="flex items-center gap-1.5 pt-1.5 border-t border-slate-100">
-                        <button onclick="clearDest()" class="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded text-[11px] font-bold flex items-center gap-0.5 transition cursor-pointer">
+                    <div class="font-semibold text-slate-800 dark:text-slate-100 leading-tight">${escapeHtml(name)}</div>
+                    <div class="flex items-center gap-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-700">
+                        <button onclick="clearDest()" class="px-2 py-1 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/70 text-rose-700 dark:text-rose-200 border border-rose-200 dark:border-rose-800 rounded text-[11px] font-bold flex items-center gap-0.5 transition cursor-pointer">
                             ✕ Remove
                         </button>
-                        <button onclick="clearAllRoutePoints()" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded text-[11px] font-medium transition cursor-pointer">
+                        <button onclick="clearAllRoutePoints()" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded text-[11px] font-medium transition cursor-pointer">
                             Clear Both
                         </button>
                     </div>

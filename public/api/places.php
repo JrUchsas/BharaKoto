@@ -15,12 +15,15 @@ require_once __DIR__ . '/../../config/config.php';
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../src/RateLimiter.php';
 
+use MongoDB\BSON\Regex;
+
 // Rate limiting: 60 requests per minute per IP for place searches
 RateLimiter::enforce('places', 60, 60);
 
 try {
     $q = trim((string)($_GET['q'] ?? ''));
-    $pdo = Database::getConnection();
+    $db = Database::getConnection();
+    $nodesCol = $db->selectCollection('popular_nodes');
 
     $results = [];
     $seenCoords = [];
@@ -28,7 +31,7 @@ try {
 
     // Helper to add unique place to results with name disambiguation and deduplication
     $addResult = function (array $place) use (&$results, &$seenCoords, &$seenNames) {
-        $rawName = trim($place['name_en'] ?? '');
+        $rawName = trim((string)($place['name_en'] ?? ''));
         if ($rawName === '') return;
 
         $normName = mb_strtolower($rawName);
@@ -38,7 +41,6 @@ try {
         // If another item already has the exact same name
         if (isset($seenNames[$normName])) {
             $existing = &$seenNames[$normName];
-            // Calculate distance to existing entry
             $distKm = 6371 * acos(
                 min(1.0, max(-1.0,
                     sin(deg2rad($lat)) * sin(deg2rad((float)$existing['latitude'])) +
@@ -49,15 +51,13 @@ try {
 
             // If within 2.5 km of each other and have identical names, skip duplicate
             if ($distKm < 2.5) {
-                // If this is a local curated landmark and the existing is OSM, prefer local
                 if (($place['source'] ?? '') === 'local' && ($existing['source'] ?? '') !== 'local') {
                     $existing = $place;
                 }
                 return;
             }
 
-            // If farther away, disambiguate name by adding area or sub-district
-            $area = trim($place['area_thana'] ?? '');
+            $area = trim((string)($place['area_thana'] ?? ''));
             if ($area !== '' && !str_contains($rawName, $area)) {
                 $place['name_en'] = "{$rawName} ({$area})";
             } elseif (!empty($place['node_type']) && $place['node_type'] !== 'general') {
@@ -74,90 +74,88 @@ try {
         }
     };
 
+    $formatLocalNode = static function (array $doc): array {
+        $coords = $doc['location']['coordinates'] ?? null;
+        $lat = (float)($doc['latitude'] ?? ($coords[1] ?? 0));
+        $lng = (float)($doc['longitude'] ?? ($coords[0] ?? 0));
+        return [
+            'id' => $doc['id'] ?? $doc['_id'] ?? null,
+            'name_en' => $doc['name_en'] ?? '',
+            'name_bn' => $doc['name_bn'] ?? '',
+            'area_thana' => $doc['area_thana'] ?? '',
+            'latitude' => $lat,
+            'longitude' => $lng,
+            'node_type' => $doc['node_type'] ?? 'general',
+            'source' => 'local',
+        ];
+    };
+
     // -----------------------------------------------------------------
     // 1. SEARCH LOCAL DATABASE (popular_nodes)
     // -----------------------------------------------------------------
     if ($q !== '') {
-        // Multi-token fuzzy matching
         $tokens = array_filter(explode(' ', $q), fn($t) => mb_strlen($t) >= 2);
-        
-        // Exact / prefix matching query first
-        $exactSql = "
-            SELECT id, name_en, name_bn, area_thana, latitude, longitude, node_type, 'local' as source
-            FROM popular_nodes
-            WHERE name_en LIKE :q_like1
-               OR name_bn LIKE :q_like2
-               OR area_thana LIKE :q_like3
-            ORDER BY 
-               CASE 
-                   WHEN LOWER(name_en) = LOWER(:q_exact) THEN 1
-                   WHEN LOWER(name_en) LIKE LOWER(:q_prefix1) THEN 2
-                   WHEN LOWER(area_thana) LIKE LOWER(:q_prefix2) THEN 3
-                   ELSE 4
-               END,
-               name_en ASC
-            LIMIT 15
-        ";
-        
-        $stmt = $pdo->prepare($exactSql);
-        $stmt->execute([
-            ':q_like1' => "%{$q}%",
-            ':q_like2' => "%{$q}%",
-            ':q_like3' => "%{$q}%",
-            ':q_exact' => $q,
-            ':q_prefix1' => "{$q}%",
-            ':q_prefix2' => "{$q}%"
-        ]);
-        $rows = $stmt->fetchAll();
-        foreach ($rows as $row) {
-            $addResult($row);
+        $regex = new Regex(preg_quote($q, '/'), 'i');
+
+        $rows = $nodesCol->find(
+            [
+                '$or' => [
+                    ['name_en' => $regex],
+                    ['name_bn' => $regex],
+                    ['area_thana' => $regex],
+                ]
+            ],
+            ['limit' => 50]
+        );
+
+        $qLower = mb_strtolower($q);
+        usort($rows, static function (array $a, array $b) use ($qLower): int {
+            $rank = static function (array $row) use ($qLower): int {
+                $nameLower = mb_strtolower((string)($row['name_en'] ?? ''));
+                $areaLower = mb_strtolower((string)($row['area_thana'] ?? ''));
+                if ($nameLower === $qLower) return 1;
+                if (str_starts_with($nameLower, $qLower)) return 2;
+                if (str_starts_with($areaLower, $qLower)) return 3;
+                return 4;
+            };
+            $ra = $rank($a);
+            $rb = $rank($b);
+            if ($ra !== $rb) return $ra <=> $rb;
+            return strcmp((string)($a['name_en'] ?? ''), (string)($b['name_en'] ?? ''));
+        });
+
+        foreach (array_slice($rows, 0, 15) as $row) {
+            $addResult($formatLocalNode($row));
         }
 
         // If fewer than 5 results and multiple words, try matching individual tokens
         if (count($results) < 5 && count($tokens) > 1) {
-            $tokenClauses = [];
-            $tokenParams = [];
-            $idx = 0;
+            $orClauses = [];
             foreach ($tokens as $token) {
-                $p = ":t_{$idx}";
-                $tokenClauses[] = "(name_en LIKE {$p} OR name_bn LIKE {$p} OR area_thana LIKE {$p})";
-                $tokenParams[$p] = "%{$token}%";
-                $idx++;
+                $tRegex = new Regex(preg_quote($token, '/'), 'i');
+                $orClauses[] = ['name_en' => $tRegex];
+                $orClauses[] = ['name_bn' => $tRegex];
+                $orClauses[] = ['area_thana' => $tRegex];
             }
 
-            $tokenSql = "
-                SELECT id, name_en, name_bn, area_thana, latitude, longitude, node_type, 'local' as source
-                FROM popular_nodes
-                WHERE " . implode(' OR ', $tokenClauses) . "
-                LIMIT 10
-            ";
-            $tokenStmt = $pdo->prepare($tokenSql);
-            $tokenStmt->execute($tokenParams);
-            $tokenRows = $tokenStmt->fetchAll();
+            $tokenRows = $nodesCol->find(['$or' => $orClauses], ['limit' => 10]);
             foreach ($tokenRows as $r) {
-                $addResult($r);
+                $addResult($formatLocalNode($r));
             }
         }
     } else {
         // Empty query: Return default top major Dhaka hubs
-        $stmt = $pdo->query("
-            SELECT id, name_en, name_bn, area_thana, latitude, longitude, node_type, 'local' as source
-            FROM popular_nodes
-            ORDER BY id ASC
-            LIMIT 10
-        ");
-        foreach ($stmt->fetchAll() as $row) {
-            $addResult($row);
+        $rows = $nodesCol->find([], ['sort' => ['id' => 1], 'limit' => 10]);
+        foreach ($rows as $row) {
+            $addResult($formatLocalNode($row));
         }
     }
 
     // -----------------------------------------------------------------
     // 2. OPENSTREETMAP NOMINATIM DHAKA GEOCODER FALLBACK
-    // If local results are fewer than 4 and query is not empty, query OSM
     // -----------------------------------------------------------------
     if ($q !== '' && count($results) < 5) {
         try {
-            // Search Dhaka bounded box (minLng: 90.20, minLat: 23.60, maxLng: 90.60, maxLat: 23.95)
             $encodedQuery = urlencode("{$q}, Dhaka, Bangladesh");
             $osmUrl = "https://nominatim.openstreetmap.org/search?q={$encodedQuery}&format=json&addressdetails=1&countrycodes=bd&limit=6";
 
@@ -174,19 +172,10 @@ try {
             if ($osmCode === 200 && is_string($osmResp)) {
                 $osmData = json_decode($osmResp, true);
                 if (is_array($osmData) && !empty($osmData)) {
-                    $cacheStmt = $pdo->prepare("
-                        INSERT INTO popular_nodes (name_en, name_bn, area_thana, latitude, longitude, node_type, barikoi_place_id)
-                        SELECT :name, :name_bn, :area, :lat, :lng, 'general', :osm_id
-                        WHERE NOT EXISTS (
-                            SELECT 1 FROM popular_nodes WHERE name_en = :check_name
-                        )
-                    ");
-
                     foreach ($osmData as $item) {
                         $lat = (float)($item['lat'] ?? 0);
                         $lon = (float)($item['lon'] ?? 0);
-                        
-                        // Sanity check coordinates for Dhaka region (23.5 to 24.1, 90.1 to 90.7)
+
                         if ($lat < 23.5 || $lat > 24.1 || $lon < 90.1 || $lon > 90.7) {
                             continue;
                         }
@@ -205,9 +194,9 @@ try {
                         } elseif ($type === 'administrative' || $class === 'boundary') {
                             $shortName .= ' (থানা এলাকা / Thana Area)';
                         }
-                        
+
                         $area = trim($item['address']['suburb'] ?? $item['address']['neighbourhood'] ?? $item['address']['city_district'] ?? $parts[1] ?? 'Dhaka');
-                        
+
                         $placeItem = [
                             'id' => 'osm_' . ($item['place_id'] ?? uniqid()),
                             'name_en' => $shortName,
@@ -218,20 +207,27 @@ try {
                             'node_type' => $class === 'highway' ? 'intersection' : 'general',
                             'source' => 'OpenStreetMap'
                         ];
-                        
+
                         $addResult($placeItem);
 
-                        // Cache in database silently for future instant lookups
+                        // Cache in MongoDB silently for future instant lookups
                         try {
-                            $cacheStmt->execute([
-                                ':name' => $shortName,
-                                ':name_bn' => $placeItem['name_bn'],
-                                ':area' => $area,
-                                ':lat' => $lat,
-                                ':lng' => $lon,
-                                ':osm_id' => 'OSM-' . ($item['place_id'] ?? rand(100, 999)),
-                                ':check_name' => $shortName
-                            ]);
+                            if (!$nodesCol->findOne(['name_en' => $shortName])) {
+                                $nodesCol->insertOne([
+                                    'id' => Database::nextSequence('popular_nodes'),
+                                    'name_en' => $shortName,
+                                    'name_bn' => $placeItem['name_bn'],
+                                    'area_thana' => $area,
+                                    'barikoi_place_id' => 'OSM-' . ($item['place_id'] ?? rand(100, 999)),
+                                    'latitude' => $lat,
+                                    'longitude' => $lon,
+                                    'location' => [
+                                        'type' => 'Point',
+                                        'coordinates' => [$lon, $lat],
+                                    ],
+                                    'node_type' => 'general',
+                                ]);
+                            }
                         } catch (Throwable) {}
                     }
                 }
@@ -251,7 +247,7 @@ try {
         try {
             $encodedQ = urlencode($q);
             $url = "https://barikoi.openapi.bka.sh/v1/api/search/autocomplete/{$barikoiKey}/place?q={$encodedQ}&city=dhaka";
-            
+
             $ch = curl_init($url);
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,

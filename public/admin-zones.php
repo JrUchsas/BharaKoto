@@ -509,19 +509,19 @@ $csrfToken = CsrfProtection::getToken();
                         const bannedVehicles = escapeHtml(String(zone.restricted_vehicles || '').replace(/,/g, ', '));
                         poly.bindPopup(`
                             <div class="text-xs space-y-1.5 p-1 min-w-[200px]">
-                                <div class="font-bold text-red-700 flex items-center justify-between">
+                                <div class="font-bold text-red-700 dark:text-red-400 flex items-center justify-between gap-2">
                                     <span>🚫 ${escapeHtml(zone.zone_name)}</span>
-                                    <span class="text-[10px] bg-red-100 text-red-800 px-1.5 py-0.2 rounded font-bold">Active</span>
+                                    <span class="text-[10px] bg-red-100 dark:bg-red-950/70 text-red-800 dark:text-red-200 px-1.5 py-0.2 rounded font-bold">Active</span>
                                 </div>
-                                <div><b>Banned:</b> ${bannedVehicles}</div>
-                                ${zone.active_start_time ? `<div><b>Hours:</b> ${zone.active_start_time} - ${zone.active_end_time}</div>` : ''}
-                                ${zone.transfer_hint ? `<div class="bg-red-50 text-red-800 p-1.5 rounded text-[11px] mt-1">${escapeHtml(zone.transfer_hint)}</div>` : ''}
-                                <div class="flex items-center gap-2 pt-1.5 border-t border-slate-100 mt-2">
-                                    <button onclick="toggleZoneStatus(${zone.id})" class="px-2 py-1 text-[11px] rounded font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer">
+                                <div class="text-slate-700 dark:text-slate-200"><b>Banned:</b> ${bannedVehicles}</div>
+                                ${zone.active_start_time ? `<div class="text-slate-600 dark:text-slate-300"><b>Hours:</b> ${zone.active_start_time} - ${zone.active_end_time}</div>` : ''}
+                                ${zone.transfer_hint ? `<div class="bg-red-50 dark:bg-red-950/60 text-red-800 dark:text-red-200 p-1.5 rounded text-[11px] mt-1 border border-red-200 dark:border-red-800">${escapeHtml(zone.transfer_hint)}</div>` : ''}
+                                <div class="flex items-center gap-2 pt-1.5 border-t border-slate-100 dark:border-slate-700 mt-2">
+                                    <button onclick="toggleZoneStatus(${zone.id})" class="px-2 py-1 text-[11px] rounded font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer">
                                         Deactivate
                                     </button>
-                                    <button onclick="deleteZoneEntry(${zone.id}, '${safeName}')" class="px-2 py-1 text-[11px] rounded font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition flex items-center gap-1 cursor-pointer">
-                                        <svg class="w-3 h-3 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                    <button onclick="deleteZoneEntry(${zone.id}, '${safeName}')" class="px-2 py-1 text-[11px] rounded font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/70 text-rose-700 dark:text-rose-200 border border-rose-200 dark:border-rose-800 transition flex items-center gap-1 cursor-pointer">
+                                        <svg class="w-3 h-3 text-rose-600 dark:text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                         <span>Delete</span>
                                     </button>
                                 </div>

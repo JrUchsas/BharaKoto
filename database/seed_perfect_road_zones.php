@@ -149,84 +149,49 @@ $zonesToSeed = [
 ];
 
 try {
-    $pdo = Database::getConnection();
+    $db = Database::getConnection();
+    $zonesCol = $db->selectCollection('restricted_zones');
 
     // Deactivate scribbled test zones
-    $pdo->exec("UPDATE restricted_zones SET is_active = 0 WHERE zone_name IN ('qaefae', 'badda')");
-
-    $updateStmt = $pdo->prepare("
-        UPDATE restricted_zones
-        SET zone_name = :name,
-            restriction_type = :type,
-            restricted_vehicles = :vehicles,
-            active_start_time = :start_time,
-            active_end_time = :end_time,
-            polygon_geojson = :polygon,
-            polygon_geom = ST_GeomFromGeoJSON(:polygon2),
-            transfer_hint = :hint,
-            is_active = 1
-        WHERE id = :id
-    ");
-
-    $insertStmt = $pdo->prepare("
-        INSERT INTO restricted_zones
-        (zone_name, city, restricted_vehicles, restriction_type, active_start_time, active_end_time, polygon_geojson, polygon_geom, transfer_hint, is_active)
-        VALUES
-        (:name, 'Dhaka', :vehicles, :type, :start_time, :end_time, :polygon, ST_GeomFromGeoJSON(:polygon2), :hint, 1)
-    ");
+    $zonesCol->updateMany(
+        ['zone_name' => ['$in' => ['qaefae', 'badda']]],
+        ['$set' => ['is_active' => false]]
+    );
 
     foreach ($zonesToSeed as $z) {
-        $jsonStr = json_encode($z['polygon'], JSON_UNESCAPED_SLASHES);
-        if ($z['id'] !== null) {
-            $updateStmt->execute([
-                ':name' => $z['name'],
-                ':type' => $z['type'],
-                ':vehicles' => $z['vehicles'],
-                ':start_time' => $z['start_time'],
-                ':end_time' => $z['end_time'],
-                ':polygon' => $jsonStr,
-                ':polygon2' => $jsonStr,
-                ':hint' => $z['hint'],
-                ':id' => $z['id']
-            ]);
-            echo "[+] Updated zone ID {$z['id']}: {$z['name']}\n";
-        } else {
-            // Check if already exists by name
-            $check = $pdo->prepare("SELECT id FROM restricted_zones WHERE zone_name = :name");
-            $check->execute([':name' => $z['name']]);
-            $existingId = $check->fetchColumn();
+        $vehiclesArr = array_values(array_filter(array_map('trim', explode(',', (string)$z['vehicles']))));
+        $doc = [
+            'zone_name' => $z['name'],
+            'city' => 'Dhaka',
+            'restriction_type' => $z['type'],
+            'restricted_vehicles' => $vehiclesArr,
+            'active_start_time' => $z['start_time'],
+            'active_end_time' => $z['end_time'],
+            'polygon_geojson' => $z['polygon'],
+            'transfer_hint' => $z['hint'],
+            'is_active' => true,
+        ];
 
-            if ($existingId) {
-                $updateStmt->execute([
-                    ':name' => $z['name'],
-                    ':type' => $z['type'],
-                    ':vehicles' => $z['vehicles'],
-                    ':start_time' => $z['start_time'],
-                    ':end_time' => $z['end_time'],
-                    ':polygon' => $jsonStr,
-                    ':polygon2' => $jsonStr,
-                    ':hint' => $z['hint'],
-                    ':id' => $existingId
-                ]);
-                echo "[+] Updated existing zone ID {$existingId}: {$z['name']}\n";
-            } else {
-                $insertStmt->execute([
-                    ':name' => $z['name'],
-                    ':type' => $z['type'],
-                    ':vehicles' => $z['vehicles'],
-                    ':start_time' => $z['start_time'],
-                    ':end_time' => $z['end_time'],
-                    ':polygon' => $jsonStr,
-                    ':polygon2' => $jsonStr,
-                    ':hint' => $z['hint']
-                ]);
-                echo "[+] Inserted new road zone: {$z['name']}\n";
+        $existing = $z['id'] !== null
+            ? $zonesCol->findOne(['id' => (int)$z['id']])
+            : $zonesCol->findOne(['zone_name' => $z['name']]);
+
+        if ($existing) {
+            $zonesCol->updateOne(['id' => (int)$existing['id']], ['$set' => $doc]);
+            echo "[+] Updated zone ID {$existing['id']}: {$z['name']}\n";
+        } else {
+            $newId = $z['id'] !== null ? (int)$z['id'] : Database::nextSequence('restricted_zones');
+            $doc['id'] = $newId;
+            $zonesCol->insertOne($doc);
+            if ($z['id'] !== null) {
+                $db->syncSequence('restricted_zones', $newId);
             }
+            echo "[+] Inserted new road zone ID {$newId}: {$z['name']}\n";
         }
     }
 
-    $activeCount = $pdo->query("SELECT COUNT(*) FROM restricted_zones WHERE is_active = 1")->fetchColumn();
-    echo "[*] Complete! Active road-following restricted zones in DB: {$activeCount}\n";
+    $activeCount = $zonesCol->countDocuments(['is_active' => true]);
+    echo "[*] Complete! Active road-following restricted zones in MongoDB: {$activeCount}\n";
 
 } catch (Throwable $e) {
     echo "[!] Error updating zones: " . $e->getMessage() . "\n";

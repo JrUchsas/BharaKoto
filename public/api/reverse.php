@@ -31,44 +31,44 @@ try {
         exit;
     }
 
-    $pdo = Database::getConnection();
+    $db = Database::getConnection();
+    $nodesCol = $db->selectCollection('popular_nodes');
 
-    // 1. Check local popular_nodes within 600m (0.6 km)
-    $stmt = $pdo->prepare("
-        SELECT name_en, name_bn, area_thana, latitude, longitude,
-               (6371 * ACOS(LEAST(1.0, GREATEST(-1.0, 
-                   COS(RADIANS(:lat1)) * COS(RADIANS(latitude)) * COS(RADIANS(longitude) - RADIANS(:lng)) + 
-                   SIN(RADIANS(:lat2)) * SIN(RADIANS(latitude))
-               )))) AS distance_km
-        FROM popular_nodes
-        HAVING distance_km <= 0.60
-        ORDER BY distance_km ASC
-        LIMIT 1
-    ");
-
-    $stmt->execute([
-        ':lat1' => $lat,
-        ':lng'  => $lng,
-        ':lat2' => $lat
+    // 1. Check local popular_nodes within 600m (0.6 km) via 2dsphere $geoNear
+    $nearbyDocs = $nodesCol->aggregate([
+        [
+            '$geoNear' => [
+                'near' => [
+                    'type' => 'Point',
+                    'coordinates' => [(float)$lng, (float)$lat],
+                ],
+                'distanceField' => 'distance_m',
+                'maxDistance' => 600,
+                'spherical' => true,
+            ],
+        ],
+        ['$limit' => 1],
     ]);
 
-    $localNode = $stmt->fetch();
+    $localNode = $nearbyDocs[0] ?? null;
     if ($localNode) {
-        $displayName = $localNode['name_en'];
-        if (!empty($localNode['area_thana']) && !stripos($displayName, $localNode['area_thana'])) {
-            $displayName .= ', ' . $localNode['area_thana'];
+        $displayName = (string)$localNode['name_en'];
+        $areaThana = (string)($localNode['area_thana'] ?? '');
+        if ($areaThana !== '' && stripos($displayName, $areaThana) === false) {
+            $displayName .= ', ' . $areaThana;
         }
+        $coords = $localNode['location']['coordinates'] ?? null;
 
         echo json_encode([
             'status' => 'success',
             'data' => [
                 'display_name' => $displayName,
                 'name_en' => $localNode['name_en'],
-                'name_bn' => $localNode['name_bn'],
-                'area_thana' => $localNode['area_thana'],
-                'latitude' => (float)$localNode['latitude'],
-                'longitude' => (float)$localNode['longitude'],
-                'distance_meters' => round((float)$localNode['distance_km'] * 1000),
+                'name_bn' => $localNode['name_bn'] ?? '',
+                'area_thana' => $areaThana,
+                'latitude' => (float)($localNode['latitude'] ?? ($coords[1] ?? $lat)),
+                'longitude' => (float)($localNode['longitude'] ?? ($coords[0] ?? $lng)),
+                'distance_meters' => round((float)($localNode['distance_m'] ?? 0)),
                 'source' => 'local_landmark'
             ]
         ], JSON_UNESCAPED_UNICODE);
@@ -117,31 +117,31 @@ try {
 
     // 3. Fallback to nearest local landmark in Dhaka
     try {
-        $stmtNear = $pdo->prepare("
-            SELECT name_en, name_bn, area_thana, latitude, longitude,
-                   (6371 * ACOS(LEAST(1.0, GREATEST(-1.0, 
-                       COS(RADIANS(:lat1)) * COS(RADIANS(latitude)) * COS(RADIANS(longitude) - RADIANS(:lng)) + 
-                       SIN(RADIANS(:lat2)) * SIN(RADIANS(latitude))
-                   )))) AS distance_km
-            FROM popular_nodes
-            ORDER BY distance_km ASC
-            LIMIT 1
-        ");
-        $stmtNear->execute([
-            ':lat1' => $lat,
-            ':lng'  => $lng,
-            ':lat2' => $lat
+        $nearestDocs = $nodesCol->aggregate([
+            [
+                '$geoNear' => [
+                    'near' => [
+                        'type' => 'Point',
+                        'coordinates' => [(float)$lng, (float)$lat],
+                    ],
+                    'distanceField' => 'distance_m',
+                    'spherical' => true,
+                ],
+            ],
+            ['$limit' => 1],
         ]);
-        $nearNode = $stmtNear->fetch();
+
+        $nearNode = $nearestDocs[0] ?? null;
         if ($nearNode) {
-            $displayName = "Near {$nearNode['name_en']}" . (!empty($nearNode['area_thana']) ? ", {$nearNode['area_thana']}" : ', Dhaka');
+            $areaThana = (string)($nearNode['area_thana'] ?? '');
+            $displayName = "Near {$nearNode['name_en']}" . ($areaThana !== '' ? ", {$areaThana}" : ', Dhaka');
             echo json_encode([
                 'status' => 'success',
                 'data' => [
                     'display_name' => $displayName,
                     'name_en' => $displayName,
-                    'name_bn' => $nearNode['name_bn'],
-                    'area_thana' => $nearNode['area_thana'] ?: 'Dhaka',
+                    'name_bn' => $nearNode['name_bn'] ?? '',
+                    'area_thana' => $areaThana ?: 'Dhaka',
                     'latitude' => $lat,
                     'longitude' => $lng,
                     'source' => 'nearest_landmark'

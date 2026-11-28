@@ -16,26 +16,50 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../src/CsrfProtection.php';
 require_once __DIR__ . '/../../src/RateLimiter.php';
 
+use MongoDB\BSON\Regex;
+
 // Rate limiting: 30 requests per minute per IP for zone management
 RateLimiter::enforce('zones', 30, 60);
 
 try {
-    $pdo = Database::getConnection();
+    $db = Database::getConnection();
+    $zonesCol = $db->selectCollection('restricted_zones');
 
     // ----------------------------------------------------
     // GET: List zones
     // ----------------------------------------------------
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $includeInactive = isset($_GET['all']) && (int)$_GET['all'] === 1;
-        $sql = "SELECT `id`, `zone_name`, `city`, `restricted_vehicles`, `restriction_type`, `active_start_time`, `active_end_time`, `polygon_geojson`, `transfer_hint`, `is_active` FROM `restricted_zones` " . ($includeInactive ? "" : "WHERE `is_active` = 1 ") . "ORDER BY `id` DESC";
-        $stmt = $pdo->query($sql);
-        $rows = $stmt->fetchAll();
+        $filter = $includeInactive ? [] : ['is_active' => true];
+        $rows = $zonesCol->find($filter, ['sort' => ['id' => -1]]);
 
         $zones = [];
         foreach ($rows as $row) {
-            $row['polygon_geojson'] = json_decode($row['polygon_geojson'], true);
-            $row['restricted_vehicles_list'] = explode(',', $row['restricted_vehicles']);
-            $zones[] = $row;
+            $polygon = $row['polygon_geojson'] ?? null;
+            if (is_string($polygon)) {
+                $polygon = json_decode($polygon, true);
+            }
+
+            $vehicles = $row['restricted_vehicles'] ?? [];
+            if (is_string($vehicles)) {
+                $vehiclesList = array_values(array_filter(array_map('trim', explode(',', $vehicles))));
+            } else {
+                $vehiclesList = array_values((array)$vehicles);
+            }
+
+            $zones[] = [
+                'id' => (int)($row['id'] ?? 0),
+                'zone_name' => $row['zone_name'] ?? '',
+                'city' => $row['city'] ?? 'Dhaka',
+                'restricted_vehicles' => implode(',', $vehiclesList),
+                'restricted_vehicles_list' => $vehiclesList,
+                'restriction_type' => $row['restriction_type'] ?? 'vip_road_ban',
+                'active_start_time' => $row['active_start_time'] ?? null,
+                'active_end_time' => $row['active_end_time'] ?? null,
+                'polygon_geojson' => $polygon,
+                'transfer_hint' => $row['transfer_hint'] ?? null,
+                'is_active' => !empty($row['is_active']) ? 1 : 0,
+            ];
         }
 
         echo json_encode([
@@ -61,7 +85,7 @@ try {
             exit;
         }
 
-        // Check for toggle action
+        // Action: toggle active status
         if (isset($data['action']) && $data['action'] === 'toggle') {
             $zoneId = (int)($data['id'] ?? 0);
             if ($zoneId <= 0) {
@@ -69,8 +93,11 @@ try {
                 echo json_encode(['status' => 'error', 'message' => 'Valid zone ID is required for toggle.']);
                 exit;
             }
-            $stmt = $pdo->prepare("UPDATE `restricted_zones` SET `is_active` = NOT `is_active` WHERE `id` = :id");
-            $stmt->execute([':id' => $zoneId]);
+            $existing = $zonesCol->findOne(['id' => $zoneId]);
+            if ($existing) {
+                $newStatus = empty($existing['is_active']);
+                $zonesCol->updateOne(['id' => $zoneId], ['$set' => ['is_active' => $newStatus]]);
+            }
 
             echo json_encode(['status' => 'success', 'message' => 'Zone status updated successfully.']);
             exit;
@@ -78,7 +105,7 @@ try {
 
         // Deactivate all bans
         if (isset($data['action']) && $data['action'] === 'deactivate_all') {
-            $pdo->exec("UPDATE `restricted_zones` SET `is_active` = 0");
+            $zonesCol->updateMany([], ['$set' => ['is_active' => false]]);
             echo json_encode(['status' => 'success', 'message' => 'All VIP bans have been cleared and deactivated.']);
             exit;
         }
@@ -91,8 +118,7 @@ try {
                 echo json_encode(['status' => 'error', 'message' => 'Valid zone ID is required for delete.']);
                 exit;
             }
-            $stmt = $pdo->prepare("DELETE FROM `restricted_zones` WHERE `id` = :id");
-            $stmt->execute([':id' => $zoneId]);
+            $zonesCol->deleteOne(['id' => $zoneId]);
 
             echo json_encode(['status' => 'success', 'message' => 'Restricted zone entry deleted permanently.']);
             exit;
@@ -100,19 +126,29 @@ try {
 
         // Delete all inactive / disabled ban entries
         if (isset($data['action']) && $data['action'] === 'delete_inactive') {
-            $deletedCount = (int)$pdo->exec("DELETE FROM `restricted_zones` WHERE `is_active` = 0");
+            $deletedCount = $zonesCol->deleteMany(['is_active' => false]);
             echo json_encode(['status' => 'success', 'message' => "Successfully deleted {$deletedCount} inactive ban entries."]);
             exit;
         }
 
         // Restore official DMP bans
         if (isset($data['action']) && $data['action'] === 'restore_official') {
-            $pdo->exec("UPDATE `restricted_zones` SET `is_active` = 1 WHERE `zone_name` LIKE '%Mirpur Road Corridor%' OR `zone_name` LIKE '%VIP Road / Kazi Nazrul Islam%' OR `zone_name` LIKE '%Elephant Road%' OR `zone_name` LIKE '%Moghbazar-Mouchak%'");
+            $zonesCol->updateMany(
+                [
+                    '$or' => [
+                        ['zone_name' => new Regex('Mirpur Road Corridor', 'i')],
+                        ['zone_name' => new Regex('VIP Road / Kazi Nazrul Islam', 'i')],
+                        ['zone_name' => new Regex('Elephant Road', 'i')],
+                        ['zone_name' => new Regex('Moghbazar-Mouchak', 'i')],
+                    ]
+                ],
+                ['$set' => ['is_active' => true]]
+            );
             echo json_encode(['status' => 'success', 'message' => 'Official DMP VIP bans restored and activated.']);
             exit;
         }
 
-        // Create multiple precision corridors from OSRM
+        // Create multiple precision corridors from OSRM (upsert by zone_name to prevent duplicates)
         if (isset($data['action']) && $data['action'] === 'create_multiple') {
             $corridors = $data['corridors'] ?? [];
             if (!is_array($corridors) || empty($corridors)) {
@@ -121,19 +157,16 @@ try {
                 exit;
             }
 
-            $insertStmt = $pdo->prepare("
-                INSERT INTO `restricted_zones`
-                (`zone_name`, `city`, `restricted_vehicles`, `restriction_type`, `active_start_time`, `active_end_time`, `polygon_geojson`, `transfer_hint`, `is_active`)
-                VALUES
-                (:name, 'Dhaka', :vehicles, :type, :start_t, :end_t, :geojson, :hint, 1)
-            ");
-
-            $created = 0;
+            $processed = 0;
             foreach ($corridors as $corridor) {
                 $name = trim((string)($corridor['name'] ?? ''));
                 if ($name === '') continue;
 
-                $vehicles = trim((string)($corridor['vehicles'] ?? 'pedal_rickshaw,battery_rickshaw'));
+                $vehiclesRaw = $corridor['vehicles'] ?? 'pedal_rickshaw,battery_rickshaw';
+                $vehiclesArr = is_array($vehiclesRaw)
+                    ? array_values(array_filter(array_map('trim', $vehiclesRaw)))
+                    : array_values(array_filter(array_map('trim', explode(',', (string)$vehiclesRaw))));
+
                 $type = trim((string)($corridor['type'] ?? 'vip_road_ban'));
                 $startTime = $corridor['start_time'] ?? null;
                 $endTime = $corridor['end_time'] ?? null;
@@ -142,22 +175,37 @@ try {
 
                 if (!$polygon || !isset($polygon['type']) || $polygon['type'] !== 'Polygon') continue;
 
-                $insertStmt->execute([
-                    ':name' => $name,
-                    ':vehicles' => $vehicles,
-                    ':type' => $type,
-                    ':start_t' => $startTime,
-                    ':end_t' => $endTime,
-                    ':geojson' => json_encode($polygon, JSON_UNESCAPED_SLASHES),
-                    ':hint' => $hint !== '' ? $hint : null,
-                ]);
-                $created++;
+                $doc = [
+                    'zone_name' => $name,
+                    'city' => 'Dhaka',
+                    'restricted_vehicles' => $vehiclesArr,
+                    'restriction_type' => $type,
+                    'active_start_time' => $startTime,
+                    'active_end_time' => $endTime,
+                    'polygon_geojson' => $polygon,
+                    'transfer_hint' => $hint !== '' ? $hint : null,
+                    'is_active' => true,
+                ];
+
+                $matches = $zonesCol->find(['zone_name' => $name], ['sort' => ['id' => -1]]);
+                if (!empty($matches)) {
+                    $keepId = (int)$matches[0]['id'];
+                    $zonesCol->updateOne(['id' => $keepId], ['$set' => $doc]);
+                    // Clean up any legacy duplicate records with the same zone_name
+                    foreach (array_slice($matches, 1) as $dup) {
+                        $zonesCol->deleteOne(['id' => (int)$dup['id']]);
+                    }
+                } else {
+                    $doc['id'] = Database::nextSequence('restricted_zones');
+                    $zonesCol->insertOne($doc);
+                }
+                $processed++;
             }
 
             echo json_encode([
                 'status' => 'success',
-                'message' => "Successfully created {$created} precision DMP corridors with road-following geometries.",
-                'count' => $created
+                'message' => "Successfully loaded {$processed} precision DMP corridors with road-following geometries.",
+                'count' => $processed
             ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
             exit;
         }
@@ -182,13 +230,12 @@ try {
             $vehicles = array_filter(array_map('trim', explode(',', $vehicles)));
         }
         $validVehicles = ['pedal_rickshaw', 'battery_rickshaw', 'cng', 'leguna'];
-        $filteredVehicles = array_intersect($vehicles, $validVehicles);
+        $filteredVehicles = array_values(array_intersect((array)$vehicles, $validVehicles));
         if (empty($filteredVehicles)) {
             http_response_code(400);
             echo json_encode(['status' => 'error', 'message' => 'Select at least one restricted vehicle.']);
             exit;
         }
-        $vehiclesSet = implode(',', $filteredVehicles);
 
         // Validate GeoJSON Polygon
         $polygon = $data['polygon_geojson'] ?? null;
@@ -209,16 +256,13 @@ try {
             exit;
         }
 
-        // Check if ring is closed (first coord equals last coord)
         $first = $ring[0];
         $last = end($ring);
         if (abs($first[0] - $last[0]) > 0.000001 || abs($first[1] - $last[1]) > 0.000001) {
-            // Automatically close the ring
             $ring[] = $first;
             $polygon['coordinates'][0] = $ring;
         }
 
-        // Validate coordinates are within greater Dhaka bounding box roughly (23.5 - 24.1, 90.1 - 90.7)
         foreach ($ring as $pt) {
             if (!is_numeric($pt[0]) || !is_numeric($pt[1])) {
                 http_response_code(400);
@@ -227,25 +271,19 @@ try {
             }
         }
 
-        $stmt = $pdo->prepare("
-            INSERT INTO `restricted_zones` 
-            (`zone_name`, `city`, `restricted_vehicles`, `restriction_type`, `active_start_time`, `active_end_time`, `polygon_geojson`, `transfer_hint`, `is_active`)
-            VALUES
-            (:name, :city, :vehicles, :type, :start_t, :end_t, :geojson, :hint, 1)
-        ");
-
-        $stmt->execute([
-            ':name' => $zoneName,
-            ':city' => $city,
-            ':vehicles' => $vehiclesSet,
-            ':type' => $restrictionType,
-            ':start_t' => $startTime,
-            ':end_t' => $endTime,
-            ':geojson' => json_encode($polygon, JSON_UNESCAPED_SLASHES),
-            ':hint' => $transferHint !== '' ? $transferHint : null,
+        $newId = Database::nextSequence('restricted_zones');
+        $zonesCol->insertOne([
+            'id' => $newId,
+            'zone_name' => $zoneName,
+            'city' => $city,
+            'restricted_vehicles' => $filteredVehicles,
+            'restriction_type' => $restrictionType,
+            'active_start_time' => $startTime,
+            'active_end_time' => $endTime,
+            'polygon_geojson' => $polygon,
+            'transfer_hint' => $transferHint !== '' ? $transferHint : null,
+            'is_active' => true,
         ]);
-
-        $newId = (int)$pdo->lastInsertId();
 
         echo json_encode([
             'status' => 'success',
@@ -278,8 +316,7 @@ try {
             echo json_encode(['status' => 'error', 'message' => 'Valid zone ID is required for deletion.']);
             exit;
         }
-        $stmt = $pdo->prepare("DELETE FROM `restricted_zones` WHERE `id` = :id");
-        $stmt->execute([':id' => $zoneId]);
+        $zonesCol->deleteOne(['id' => $zoneId]);
 
         echo json_encode(['status' => 'success', 'message' => 'Restricted zone entry deleted permanently.']);
         exit;

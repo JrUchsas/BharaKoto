@@ -1,81 +1,83 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/../src/MongoStore.php';
+
 /**
- * PDO Singleton Connection Handler
+ * MongoDB Singleton Connection Handler (with optional legacy MySQL helper for data migration)
  */
 final class Database
 {
-    private static ?PDO $instance = null;
+    private static ?MongoDatabase $instance = null;
     private static ?array $config = null;
 
     private function __construct() {}
     private function __clone() {}
 
-    /**
-     * Load configuration once
-     */
-    private static function loadConfig(): array
+    private static function loadAllConfig(): array
     {
         if (self::$config === null) {
-            $allConfig = require __DIR__ . '/config.php';
-            self::$config = $allConfig['db'];
+            self::$config = require __DIR__ . '/config.php';
         }
         return self::$config;
     }
 
     /**
-     * Get primary PDO connection to the application database
+     * Get primary MongoDB database handle
      */
-    public static function getConnection(): PDO
+    public static function getConnection(): MongoDatabase
     {
         if (self::$instance === null) {
-            $db = self::loadConfig();
-            $dsn = sprintf(
-                'mysql:host=%s;port=%d;dbname=%s;charset=%s',
-                $db['host'],
-                $db['port'],
-                $db['database'],
-                $db['charset']
-            );
+            $all = self::loadAllConfig();
+            $mongo = $all['mongodb'] ?? [];
+            $uri = trim((string)($mongo['uri'] ?? ''));
+            $dbName = trim((string)($mongo['database'] ?? 'bd_fare_estimator'));
 
-            $options = [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                PDO::ATTR_EMULATE_PREPARES => false,
-                PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES {$db['charset']} COLLATE {$db['collation']}"
-            ];
+            if ($uri === '') {
+                throw new RuntimeException('MONGODB_URI is not configured in .env or environment variables.');
+            }
 
             try {
-                self::$instance = new PDO($dsn, $db['username'], $db['password'], $options);
-            } catch (PDOException $e) {
-                throw new RuntimeException("Database Connection Error: " . $e->getMessage(), (int)$e->getCode(), $e);
+                $manager = new MongoDB\Driver\Manager($uri);
+                self::$instance = new MongoDatabase($manager, $dbName);
+            } catch (Throwable $e) {
+                throw new RuntimeException('MongoDB Connection Error: ' . $e->getMessage(), (int)$e->getCode(), $e);
             }
         }
 
         return self::$instance;
     }
 
-    /**
-     * Get a connection without selecting a database (useful for migration/creation)
-     */
-    public static function getMigrationConnection(): PDO
+    public static function nextSequence(string $collectionName): int
     {
-        $db = self::loadConfig();
+        return self::getConnection()->nextSequence($collectionName);
+    }
+
+    public static function syncSequence(string $collectionName, int $minValue): void
+    {
+        self::getConnection()->syncSequence($collectionName, $minValue);
+    }
+
+    /**
+     * Optional legacy MySQL PDO connection (used only for migrating existing MySQL data to MongoDB)
+     */
+    public static function getMysqlConnection(): PDO
+    {
+        $all = self::loadAllConfig();
+        $db = $all['db'];
         $dsn = sprintf(
-            'mysql:host=%s;port=%d;charset=%s',
+            'mysql:host=%s;port=%d;dbname=%s;charset=%s',
             $db['host'],
             $db['port'],
+            $db['database'],
             $db['charset']
         );
 
-        $options = [
+        return new PDO($dsn, $db['username'], $db['password'], [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES => false,
-            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES {$db['charset']}"
-        ];
-
-        return new PDO($dsn, $db['username'], $db['password'], $options);
+            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES {$db['charset']} COLLATE {$db['collation']}",
+        ]);
     }
 }

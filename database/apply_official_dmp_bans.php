@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
 
 echo "[-] Fetching precision road geometries for official DMP / DTCA rickshaw ban corridors...\n";
@@ -12,7 +13,7 @@ function fetchOsrmMultiStop(array $waypoints): array
         $coordStrings[] = sprintf('%.6f,%.6f', $wp[0], $wp[1]);
     }
     $url = "https://router.project-osrm.org/route/v1/driving/" . implode(';', $coordStrings) . "?overview=full&geometries=geojson";
-    
+
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
@@ -22,9 +23,12 @@ function fetchOsrmMultiStop(array $waypoints): array
     $resp = curl_exec($ch);
     curl_close($ch);
 
-    if (!is_string($resp)) return [];
+    if (!is_string($resp)) {
+        return $waypoints;
+    }
     $data = json_decode($resp, true);
-    return $data['routes'][0]['geometry']['coordinates'] ?? [];
+    $coords = $data['routes'][0]['geometry']['coordinates'] ?? [];
+    return count($coords) >= 2 ? $coords : $waypoints;
 }
 
 function bufferPolylineToRoadCorridor(array $coords, float $halfWidth = 0.00018): array
@@ -75,63 +79,46 @@ function bufferPolylineToRoadCorridor(array $coords, float $halfWidth = 0.00018)
     ];
 }
 
-// -------------------------------------------------------------
-// 1. Official Route 1: Mirpur Road (Gabtoli to Azimpur)
-// Source: Official DTCA & DMP Circular July 7, 2019
-// -------------------------------------------------------------
 echo "  [1/4] Generating Mirpur Road corridor (Gabtoli -> Asad Gate -> Science Lab -> Azimpur)...\n";
 $mirpurWaypoints = [
-    [90.3420, 23.7850], // Gabtoli
-    [90.3662, 23.7719], // Shyamoli
-    [90.3725, 23.7601], // Asad Gate
-    [90.3815, 23.7482], // Kalabagan
-    [90.3846, 23.7401], // Science Lab
-    [90.3855, 23.7289]  // Azimpur
+    [90.3420, 23.7850],
+    [90.3662, 23.7719],
+    [90.3725, 23.7601],
+    [90.3815, 23.7482],
+    [90.3846, 23.7401],
+    [90.3855, 23.7289]
 ];
 $mirpurCoords = fetchOsrmMultiStop($mirpurWaypoints);
 echo "        Points: " . count($mirpurCoords) . "\n";
 $mirpurPoly = bufferPolylineToRoadCorridor($mirpurCoords, 0.00018);
 
-// -------------------------------------------------------------
-// 2. Official Route 2: VIP Road / Kazi Nazrul Islam Ave & Airport Express
-// (Shahbagh -> Bangla Motor -> Karwan Bazar -> Farmgate -> Mohakhali)
-// Source: DMP Traffic Division VIP Corridor Order
-// -------------------------------------------------------------
 echo "  [2/4] Generating VIP Road corridor (Shahbagh -> Farmgate -> Mohakhali)...\n";
 $vipWaypoints = [
-    [90.3958, 23.7381], // Shahbagh
-    [90.3945, 23.7460], // Bangla Motor
-    [90.3934, 23.7505], // Karwan Bazar
-    [90.3899, 23.7574], // Farmgate
-    [90.3921, 23.7699], // Jahangir Gate
-    [90.4043, 23.7776]  // Mohakhali
+    [90.3958, 23.7381],
+    [90.3945, 23.7460],
+    [90.3934, 23.7505],
+    [90.3899, 23.7574],
+    [90.3921, 23.7699],
+    [90.4043, 23.7776]
 ];
 $vipCoords = fetchOsrmMultiStop($vipWaypoints);
 echo "        Points: " . count($vipCoords) . "\n";
 $vipPoly = bufferPolylineToRoadCorridor($vipCoords, 0.00018);
 
-// -------------------------------------------------------------
-// 3. Official Route 3: Elephant Road Corridor (Science Lab to Shahbagh)
-// Source: Official DTCA & DMP Circular July 7, 2019
-// -------------------------------------------------------------
 echo "  [3/4] Generating Elephant Road corridor (Science Lab -> Katabon -> Shahbagh)...\n";
 $elephantWaypoints = [
-    [90.3846, 23.7401], // Science Lab
-    [90.3892, 23.7408], // Katabon
-    [90.3958, 23.7381]  // Shahbagh
+    [90.3846, 23.7401],
+    [90.3892, 23.7408],
+    [90.3958, 23.7381]
 ];
 $elephantCoords = fetchOsrmMultiStop($elephantWaypoints);
 echo "        Points: " . count($elephantCoords) . "\n";
 $elephantPoly = bufferPolylineToRoadCorridor($elephantCoords, 0.00018);
 
-// -------------------------------------------------------------
-// 4. Official Route 4: Moghbazar-Mouchak Flyover Upper Deck
-// Source: High Court & DMP Directive on Flyover Three-Wheelers
-// -------------------------------------------------------------
 echo "  [4/4] Generating Moghbazar-Mouchak Flyover ramp corridor...\n";
 $flyoverWaypoints = [
-    [90.4045, 23.7481], // Moghbazar Wireless
-    [90.4132, 23.7485]  // Mouchak
+    [90.4045, 23.7481],
+    [90.4132, 23.7485]
 ];
 $flyoverCoords = fetchOsrmMultiStop($flyoverWaypoints);
 echo "        Points: " . count($flyoverCoords) . "\n";
@@ -141,7 +128,7 @@ $officialBans = [
     [
         'name' => 'Mirpur Road Corridor (Gabtoli to Azimpur)',
         'type' => 'vip_road_ban',
-        'vehicles' => 'pedal_rickshaw,battery_rickshaw',
+        'vehicles' => ['pedal_rickshaw', 'battery_rickshaw'],
         'start_time' => '07:00:00',
         'end_time' => '22:00:00',
         'polygon' => $mirpurPoly,
@@ -150,7 +137,7 @@ $officialBans = [
     [
         'name' => 'VIP Road / Kazi Nazrul Islam Ave (Shahbagh to Mohakhali)',
         'type' => 'vip_road_ban',
-        'vehicles' => 'pedal_rickshaw,battery_rickshaw',
+        'vehicles' => ['pedal_rickshaw', 'battery_rickshaw'],
         'start_time' => '07:00:00',
         'end_time' => '22:00:00',
         'polygon' => $vipPoly,
@@ -159,7 +146,7 @@ $officialBans = [
     [
         'name' => 'Elephant Road (Science Lab to Shahbagh)',
         'type' => 'vip_road_ban',
-        'vehicles' => 'pedal_rickshaw,battery_rickshaw',
+        'vehicles' => ['pedal_rickshaw', 'battery_rickshaw'],
         'start_time' => '07:00:00',
         'end_time' => '22:00:00',
         'polygon' => $elephantPoly,
@@ -168,7 +155,7 @@ $officialBans = [
     [
         'name' => 'Moghbazar-Mouchak Flyover (Upper Deck)',
         'type' => 'flyover_ban',
-        'vehicles' => 'pedal_rickshaw,battery_rickshaw',
+        'vehicles' => ['pedal_rickshaw', 'battery_rickshaw'],
         'start_time' => null,
         'end_time' => null,
         'polygon' => $flyoverPoly,
@@ -177,37 +164,38 @@ $officialBans = [
 ];
 
 try {
-    $pdo = Database::getConnection();
+    $db = Database::getConnection();
+    $zonesCol = $db->selectCollection('restricted_zones');
 
     // Safely deactivate any old/trial records
-    $pdo->exec("UPDATE restricted_zones SET is_active = 0");
-
-    $insert = $pdo->prepare("
-        INSERT INTO restricted_zones
-        (zone_name, city, restricted_vehicles, restriction_type, active_start_time, active_end_time, polygon_geojson, polygon_geom, transfer_hint, is_active)
-        VALUES
-        (:name, 'Dhaka', :vehicles, :type, :start_time, :end_time, :geojson, ST_GeomFromGeoJSON(:geojson2), :hint, 1)
-    ");
+    $zonesCol->updateMany([], ['$set' => ['is_active' => false]]);
 
     foreach ($officialBans as $ban) {
-        $polygonJson = json_encode($ban['polygon'], JSON_UNESCAPED_SLASHES);
-        $insert->execute([
-            ':name' => $ban['name'],
-            ':vehicles' => $ban['vehicles'],
-            ':type' => $ban['type'],
-            ':start_time' => $ban['start_time'],
-            ':end_time' => $ban['end_time'],
-            ':geojson' => $polygonJson,
-            ':geojson2' => $polygonJson,
-            ':hint' => $ban['hint']
-        ]);
+        $existing = $zonesCol->findOne(['zone_name' => $ban['name']]);
+        $doc = [
+            'zone_name' => $ban['name'],
+            'city' => 'Dhaka',
+            'restricted_vehicles' => $ban['vehicles'],
+            'restriction_type' => $ban['type'],
+            'active_start_time' => $ban['start_time'],
+            'active_end_time' => $ban['end_time'],
+            'polygon_geojson' => $ban['polygon'],
+            'transfer_hint' => $ban['hint'],
+            'is_active' => true,
+        ];
+
+        if ($existing) {
+            $zonesCol->updateOne(['id' => (int)$existing['id']], ['$set' => $doc]);
+        } else {
+            $doc['id'] = Database::nextSequence('restricted_zones');
+            $zonesCol->insertOne($doc);
+        }
         echo "[+] Landed official ban: {$ban['name']}\n";
     }
 
-    $count = $pdo->query("SELECT COUNT(*) FROM restricted_zones WHERE is_active = 1")->fetchColumn();
-    echo "[*] Success! Authenticated official Dhaka rickshaw-banned corridors in DB: {$count}\n";
-
+    $count = $zonesCol->countDocuments(['is_active' => true]);
+    echo "[*] Success! Authenticated official Dhaka rickshaw-banned corridors in MongoDB: {$count}\n";
 } catch (Throwable $e) {
-    echo "[!] DB Error: " . $e->getMessage() . "\n";
+    echo "[!] MongoDB Error: " . $e->getMessage() . "\n";
     exit(1);
 }

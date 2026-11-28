@@ -6,12 +6,12 @@ declare(strict_types=1);
  */
 final class FareEstimatorService
 {
-    private PDO $pdo;
+    private MongoDatabase $db;
     private array $config;
 
-    public function __construct(?PDO $pdo = null, ?array $config = null)
+    public function __construct(?MongoDatabase $db = null, ?array $config = null)
     {
-        $this->pdo = $pdo ?? Database::getConnection();
+        $this->db = $db ?? Database::getConnection();
         $this->config = $config ?? (require __DIR__ . '/../config/config.php');
     }
 
@@ -81,18 +81,11 @@ final class FareEstimatorService
     {
         $currentTime = $currentTime ?? date('H:i:s');
 
-        $sql = "
-            SELECT id, zone_name, city, restricted_vehicles, restriction_type,
-                   active_start_time, active_end_time, polygon_geojson, transfer_hint, is_active
-            FROM restricted_zones
-            WHERE is_active = 1
-              AND FIND_IN_SET(:vehicle, restricted_vehicles) > 0
-        ";
+        $rows = $this->db->selectCollection('restricted_zones')->find([
+            'is_active' => true,
+            'restricted_vehicles' => $vehicleType,
+        ]);
 
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([':vehicle' => $vehicleType]);
-
-        $rows = $stmt->fetchAll();
         $matching = [];
 
         foreach ($rows as $row) {
@@ -106,6 +99,11 @@ final class FareEstimatorService
                     $isTimeActive = ($currentTime >= $start || $currentTime <= $end);
                 }
             }
+            $vehicles = $row['restricted_vehicles'] ?? [];
+            if (is_array($vehicles)) {
+                $row['restricted_vehicles'] = implode(',', $vehicles);
+            }
+            $row['is_active'] = !empty($row['is_active']) ? 1 : 0;
             $row['is_time_active'] = $isTimeActive;
             $matching[] = $row;
         }
@@ -576,9 +574,7 @@ final class FareEstimatorService
         bool $isPeakHour,
         bool $isRaining
     ): array {
-        $stmt = $this->pdo->prepare("SELECT * FROM fare_configs WHERE vehicle_type = :v LIMIT 1");
-        $stmt->execute([':v' => $vehicleType]);
-        $config = $stmt->fetch();
+        $config = $this->db->selectCollection('fare_configs')->findOne(['vehicle_type' => $vehicleType]);
 
         if (!$config) {
             throw new InvalidArgumentException("Fare configuration not found for vehicle: {$vehicleType}");
@@ -663,85 +659,72 @@ final class FareEstimatorService
         string $vehicleType,
         float $radiusKm = 0.30
     ): array {
-        // Safe spherical law of cosines with LEAST(1.0, GREATEST(-1.0, ...)) to prevent NaN
-        $sql = "
-            SELECT 
-                COUNT(*) as total_submissions,
-                COALESCE(AVG(fare_paid_bdt), 0) as avg_fare,
-                COALESCE(MIN(fare_paid_bdt), 0) as min_fare,
-                COALESCE(MAX(fare_paid_bdt), 0) as max_fare
-            FROM crowdsourced_fares
-            WHERE vehicle_type = :vehicle
-              AND status = 'approved'
-              AND created_at >= DATE_SUB(NOW(), INTERVAL 90 DAY)
-              AND (6371 * ACOS(LEAST(1.0, GREATEST(-1.0, 
-                  COS(RADIANS(:o_lat1)) * COS(RADIANS(origin_lat)) * COS(RADIANS(origin_lng) - RADIANS(:o_lng)) + 
-                  SIN(RADIANS(:o_lat2)) * SIN(RADIANS(origin_lat))
-              )))) <= :radius1
-              AND (6371 * ACOS(LEAST(1.0, GREATEST(-1.0, 
-                  COS(RADIANS(:d_lat1)) * COS(RADIANS(dest_lat)) * COS(RADIANS(dest_lng) - RADIANS(:d_lng)) + 
-                  SIN(RADIANS(:d_lat2)) * SIN(RADIANS(dest_lat))
-              )))) <= :radius2
-        ";
+        $cutoff = MongoDatabase::utcDateTime(time() - (90 * 86400));
+        $faresCol = $this->db->selectCollection('crowdsourced_fares');
 
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([
-            ':vehicle' => $vehicleType,
-            ':o_lat1' => $originLat,
-            ':o_lat2' => $originLat,
-            ':o_lng' => $originLng,
-            ':d_lat1' => $destLat,
-            ':d_lat2' => $destLat,
-            ':d_lng' => $destLng,
-            ':radius1' => $radiusKm,
-            ':radius2' => $radiusKm,
+        $candidates = $faresCol->aggregate([
+            [
+                '$geoNear' => [
+                    'near' => [
+                        'type' => 'Point',
+                        'coordinates' => [$originLng, $originLat],
+                    ],
+                    'distanceField' => 'origin_dist_m',
+                    'maxDistance' => $radiusKm * 1000.0,
+                    'spherical' => true,
+                    'query' => [
+                        'vehicle_type' => $vehicleType,
+                        'status' => 'approved',
+                        'created_at' => ['$gte' => $cutoff],
+                    ],
+                ],
+            ],
+            ['$sort' => ['created_at' => -1]],
         ]);
 
-        $res = $stmt->fetch();
-        $total = (int)($res['total_submissions'] ?? 0);
+        $matched = [];
+        foreach ($candidates as $row) {
+            $dCoords = $row['dest_location']['coordinates'] ?? null;
+            $dLat = (float)($row['dest_lat'] ?? ($dCoords[1] ?? 0));
+            $dLng = (float)($row['dest_lng'] ?? ($dCoords[0] ?? 0));
 
-        // Fetch recent matching rides
+            if ($this->calculateHaversineKm($destLat, $destLng, $dLat, $dLng) <= $radiusKm) {
+                $matched[] = $row;
+            }
+        }
+
+        $total = count($matched);
+        $avgFare = 0.0;
+        $minFare = 0.0;
+        $maxFare = 0.0;
         $recentRides = [];
+
         if ($total > 0) {
-            $recentSql = "
-                SELECT id, fare_paid_bdt, weather_condition, traffic_condition, is_peak_hour, upvotes, created_at
-                FROM crowdsourced_fares
-                WHERE vehicle_type = :vehicle
-                  AND status = 'approved'
-                  AND created_at >= DATE_SUB(NOW(), INTERVAL 90 DAY)
-                  AND (6371 * ACOS(LEAST(1.0, GREATEST(-1.0, 
-                      COS(RADIANS(:o_lat1)) * COS(RADIANS(origin_lat)) * COS(RADIANS(origin_lng) - RADIANS(:o_lng)) + 
-                      SIN(RADIANS(:o_lat2)) * SIN(RADIANS(origin_lat))
-                  )))) <= :radius1
-                  AND (6371 * ACOS(LEAST(1.0, GREATEST(-1.0, 
-                      COS(RADIANS(:d_lat1)) * COS(RADIANS(dest_lat)) * COS(RADIANS(dest_lng) - RADIANS(:d_lng)) + 
-                      SIN(RADIANS(:d_lat2)) * SIN(RADIANS(dest_lat))
-                  )))) <= :radius2
-                ORDER BY created_at DESC
-                LIMIT 5
-            ";
-            $recentStmt = $this->pdo->prepare($recentSql);
-            $recentStmt->execute([
-                ':vehicle' => $vehicleType,
-                ':o_lat1' => $originLat,
-                ':o_lat2' => $originLat,
-                ':o_lng' => $originLng,
-                ':d_lat1' => $destLat,
-                ':d_lat2' => $destLat,
-                ':d_lng' => $destLng,
-                ':radius1' => $radiusKm,
-                ':radius2' => $radiusKm,
-            ]);
-            $recentRides = $recentStmt->fetchAll();
+            $fares = array_map(fn($r) => (float)$r['fare_paid_bdt'], $matched);
+            $avgFare = array_sum($fares) / $total;
+            $minFare = min($fares);
+            $maxFare = max($fares);
+
+            foreach (array_slice($matched, 0, 5) as $r) {
+                $recentRides[] = [
+                    'id' => (int)($r['id'] ?? 0),
+                    'fare_paid_bdt' => (float)$r['fare_paid_bdt'],
+                    'weather_condition' => $r['weather_condition'] ?? 'clear',
+                    'traffic_condition' => $r['traffic_condition'] ?? 'normal',
+                    'is_peak_hour' => !empty($r['is_peak_hour']) ? 1 : 0,
+                    'upvotes' => (int)($r['upvotes'] ?? 0),
+                    'created_at' => $r['created_at'] ?? null,
+                ];
+            }
         }
 
         return [
             'has_data' => $total > 0,
             'submissions_count' => $total,
-            'average_fare_bdt' => $total > 0 ? (float)(round(((float)$res['avg_fare']) / 5.0) * 5.0) : null,
-            'raw_average_bdt' => $total > 0 ? round((float)$res['avg_fare'], 2) : null,
-            'min_fare_bdt' => $total > 0 ? (float)$res['min_fare'] : null,
-            'max_fare_bdt' => $total > 0 ? (float)$res['max_fare'] : null,
+            'average_fare_bdt' => $total > 0 ? (float)(round($avgFare / 5.0) * 5.0) : null,
+            'raw_average_bdt' => $total > 0 ? round($avgFare, 2) : null,
+            'min_fare_bdt' => $total > 0 ? $minFare : null,
+            'max_fare_bdt' => $total > 0 ? $maxFare : null,
             'search_radius_meters' => (int)($radiusKm * 1000),
             'recent_submissions' => $recentRides,
         ];

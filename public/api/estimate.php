@@ -80,6 +80,7 @@ try {
 } catch (Throwable $e) {
     http_response_code(500);
     // Sanitize error message - don't expose internal details
+    $config = require __DIR__ . '/../../config/config.php';
     $message = ($config['app']['debug'] ?? false) ? $e->getMessage() : 'Internal server error. Please try again.';
     error_log('Estimate API Error: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
     echo json_encode([

@@ -105,34 +105,33 @@ $baddaNodes = [
 ];
 
 try {
-    $pdo = Database::getConnection();
-    $stmt = $pdo->prepare("
-        INSERT INTO popular_nodes (name_en, name_bn, area_thana, latitude, longitude, node_type, barikoi_place_id)
-        SELECT :name_en, :name_bn, :area, :lat, :lng, :type, :bk_id
-        WHERE NOT EXISTS (
-            SELECT 1 FROM popular_nodes WHERE name_en = :check_en
-        )
-    ");
+    $db = Database::getConnection();
+    $nodesCol = $db->selectCollection('popular_nodes');
 
     $count = 0;
     foreach ($baddaNodes as $node) {
-        $bkId = 'BK-DH-BADDA-' . rand(100, 999);
-        $stmt->execute([
-            ':name_en' => $node['name_en'],
-            ':name_bn' => $node['name_bn'],
-            ':area' => $node['area_thana'],
-            ':lat' => $node['lat'],
-            ':lng' => $node['lng'],
-            ':type' => $node['type'],
-            ':bk_id' => $bkId,
-            ':check_en' => $node['name_en']
-        ]);
-        if ($stmt->rowCount() > 0) {
-            $count++;
+        if ($nodesCol->findOne(['name_en' => $node['name_en']])) {
+            continue;
         }
+        $bkId = 'BK-DH-BADDA-' . rand(100, 999);
+        $nodesCol->insertOne([
+            'id' => Database::nextSequence('popular_nodes'),
+            'name_en' => $node['name_en'],
+            'name_bn' => $node['name_bn'],
+            'area_thana' => $node['area_thana'],
+            'barikoi_place_id' => $bkId,
+            'latitude' => (float)$node['lat'],
+            'longitude' => (float)$node['lng'],
+            'location' => [
+                'type' => 'Point',
+                'coordinates' => [(float)$node['lng'], (float)$node['lat']],
+            ],
+            'node_type' => $node['type'],
+        ]);
+        $count++;
     }
 
-    echo "[+] Done! Added {$count} detailed Badda locations to database.\n";
+    echo "[+] Done! Added {$count} detailed Badda locations to MongoDB.\n";
 
 } catch (Throwable $e) {
     echo "[!] Error seeding Badda hubs: " . $e->getMessage() . "\n";

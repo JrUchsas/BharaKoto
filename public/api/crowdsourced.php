@@ -21,7 +21,10 @@ require_once __DIR__ . '/../../src/RateLimiter.php';
 RateLimiter::enforce('crowdsourced', 30, 60);
 
 try {
-    $pdo = Database::getConnection();
+    $db = Database::getConnection();
+    $faresCol = $db->selectCollection('crowdsourced_fares');
+    $usersCol = $db->selectCollection('users');
+    $votesCol = $db->selectCollection('fare_votes');
 
     // ----------------------------------------------------
     // GET: Retrieve Recent Commuter Submissions
@@ -30,30 +33,53 @@ try {
         $limit = min(50, max(5, (int)($_GET['limit'] ?? 15)));
         $vehicle = trim((string)($_GET['vehicle'] ?? ''));
 
-        $params = [];
-        $where = "WHERE cf.status = 'approved'";
+        $filter = ['status' => 'approved'];
         if ($vehicle !== '') {
-            $where .= " AND cf.vehicle_type = :vehicle";
-            $params[':vehicle'] = $vehicle;
+            $filter['vehicle_type'] = $vehicle;
         }
 
-        $sql = "
-            SELECT 
-                cf.id, cf.vehicle_type, cf.origin_name, cf.origin_lat, cf.origin_lng,
-                cf.dest_name, cf.dest_lat, cf.dest_lng, cf.api_distance_km, cf.fare_paid_bdt,
-                cf.weather_condition, cf.traffic_condition, cf.is_peak_hour,
-                cf.upvotes, cf.downvotes, cf.created_at,
-                COALESCE(u.name, 'Commuter') as commuter_name
-            FROM crowdsourced_fares cf
-            LEFT JOIN users u ON cf.user_id = u.id
-            {$where}
-            ORDER BY cf.created_at DESC
-            LIMIT {$limit}
-        ";
+        $docs = $faresCol->find($filter, [
+            'sort' => ['created_at' => -1],
+            'limit' => $limit,
+        ]);
 
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        $rows = $stmt->fetchAll();
+        // Batch resolve commuter names from users collection
+        $userIds = array_values(array_unique(array_filter(array_map(
+            fn($d) => isset($d['user_id']) ? (int)$d['user_id'] : null,
+            $docs
+        ))));
+        $userMap = [];
+        if (!empty($userIds)) {
+            foreach ($usersCol->find(['id' => ['$in' => $userIds]]) as $u) {
+                $userMap[(int)$u['id']] = $u['name'] ?? 'Commuter';
+            }
+        }
+
+        $rows = [];
+        foreach ($docs as $doc) {
+            $uid = isset($doc['user_id']) ? (int)$doc['user_id'] : null;
+            $rows[] = [
+                'id' => (int)($doc['id'] ?? 0),
+                'vehicle_type' => $doc['vehicle_type'] ?? '',
+                'origin_name' => $doc['origin_name'] ?? '',
+                'origin_lat' => (float)($doc['origin_lat'] ?? 0),
+                'origin_lng' => (float)($doc['origin_lng'] ?? 0),
+                'dest_name' => $doc['dest_name'] ?? '',
+                'dest_lat' => (float)($doc['dest_lat'] ?? 0),
+                'dest_lng' => (float)($doc['dest_lng'] ?? 0),
+                'api_distance_km' => (float)($doc['api_distance_km'] ?? 0),
+                'fare_paid_bdt' => (float)($doc['fare_paid_bdt'] ?? 0),
+                'weather_condition' => $doc['weather_condition'] ?? 'clear',
+                'traffic_condition' => $doc['traffic_condition'] ?? 'normal',
+                'is_peak_hour' => !empty($doc['is_peak_hour']) ? 1 : 0,
+                'upvotes' => (int)($doc['upvotes'] ?? 0),
+                'downvotes' => (int)($doc['downvotes'] ?? 0),
+                'created_at' => $doc['created_at'] ?? null,
+                'commuter_name' => ($uid !== null && isset($userMap[$uid]))
+                    ? $userMap[$uid]
+                    : ($doc['commuter_name'] ?? 'Commuter'),
+            ];
+        }
 
         echo json_encode([
             'status' => 'success',
@@ -81,7 +107,7 @@ try {
         // Action: Vote on existing submission
         if (isset($data['action']) && $data['action'] === 'vote') {
             $fareId = (int)($data['fare_id'] ?? 0);
-            $userId = (int)($data['user_id'] ?? 1); // default commuter user
+            $userId = (int)($data['user_id'] ?? 1);
             $voteType = trim((string)($data['vote_type'] ?? 'accurate'));
 
             if ($fareId <= 0 || !in_array($voteType, ['accurate', 'overpaid', 'too_low_fake'], true)) {
@@ -90,21 +116,29 @@ try {
                 exit;
             }
 
-            // Insert or update vote
-            $voteStmt = $pdo->prepare("
-                INSERT INTO fare_votes (fare_id, user_id, vote_type)
-                VALUES (:f, :u, :v)
-                ON DUPLICATE KEY UPDATE vote_type = VALUES(vote_type)
-            ");
-            $voteStmt->execute([':f' => $fareId, ':u' => $userId, ':v' => $voteType]);
+            $existingVote = $votesCol->findOne(['fare_id' => $fareId, 'user_id' => $userId]);
+            if ($existingVote) {
+                $votesCol->updateOne(
+                    ['fare_id' => $fareId, 'user_id' => $userId],
+                    ['$set' => ['vote_type' => $voteType, 'created_at' => MongoDatabase::utcDateTime()]]
+                );
+            } else {
+                $votesCol->insertOne([
+                    'id' => Database::nextSequence('fare_votes'),
+                    'fare_id' => $fareId,
+                    'user_id' => $userId,
+                    'vote_type' => $voteType,
+                    'created_at' => MongoDatabase::utcDateTime(),
+                ]);
+            }
 
-            // Update upvotes count on main table
-            $pdo->prepare("
-                UPDATE crowdsourced_fares 
-                SET upvotes = (SELECT COUNT(*) FROM fare_votes WHERE fare_id = :f1 AND vote_type = 'accurate'),
-                    downvotes = (SELECT COUNT(*) FROM fare_votes WHERE fare_id = :f2 AND vote_type != 'accurate')
-                WHERE id = :f3
-            ")->execute([':f1' => $fareId, ':f2' => $fareId, ':f3' => $fareId]);
+            $upvotes = $votesCol->countDocuments(['fare_id' => $fareId, 'vote_type' => 'accurate']);
+            $downvotes = $votesCol->countDocuments(['fare_id' => $fareId, 'vote_type' => ['$ne' => 'accurate']]);
+
+            $faresCol->updateOne(
+                ['id' => $fareId],
+                ['$set' => ['upvotes' => $upvotes, 'downvotes' => $downvotes]]
+            );
 
             echo json_encode(['status' => 'success', 'message' => 'Vote recorded successfully.']);
             exit;
@@ -122,12 +156,11 @@ try {
 
         $weather = trim((string)($data['weather_condition'] ?? 'clear'));
         $traffic = trim((string)($data['traffic_condition'] ?? 'normal'));
-        $isPeak  = !empty($data['is_peak_hour']) ? 1 : 0;
+        $isPeak  = !empty($data['is_peak_hour']);
 
         $phone = trim((string)($data['phone'] ?? ''));
         $name  = trim((string)($data['name'] ?? 'Anonymous Commuter'));
 
-        // Validate Bangladeshi phone number format (01X-XXXXXXXX)
         if ($phone !== '' && !preg_match('/^01[3-9]\d{8}$/', $phone)) {
             http_response_code(400);
             echo json_encode([
@@ -153,53 +186,59 @@ try {
             exit;
         }
 
-        // Calculate distance
-        $service = new FareEstimatorService($pdo);
+        $service = new FareEstimatorService($db);
         $straightKm = $service->calculateHaversineKm($originLat, $originLng, $destLat, $destLng);
         $apiDistanceKm = round($straightKm * 1.30, 2);
 
-        // Find or create user if phone given
         $userId = null;
         if ($phone !== '') {
-            $userStmt = $pdo->prepare("SELECT id FROM users WHERE phone = :phone LIMIT 1");
-            $userStmt->execute([':phone' => $phone]);
-            $existingUser = $userStmt->fetch();
+            $existingUser = $usersCol->findOne(['phone' => $phone]);
             if ($existingUser) {
                 $userId = (int)$existingUser['id'];
-                // Increment reputation
-                $pdo->prepare("UPDATE users SET reputation_points = reputation_points + 2 WHERE id = :id")->execute([':id' => $userId]);
+                $usersCol->updateOne(['id' => $userId], ['$inc' => ['reputation_points' => 2]]);
             } else {
-                $insUser = $pdo->prepare("INSERT INTO users (name, phone, reputation_points) VALUES (:name, :phone, 12)");
-                $insUser->execute([':name' => $name, ':phone' => $phone]);
-                $userId = (int)$pdo->lastInsertId();
+                $userId = Database::nextSequence('users');
+                $usersCol->insertOne([
+                    'id' => $userId,
+                    'name' => $name,
+                    'phone' => $phone,
+                    'reputation_points' => 12,
+                    'is_blocked' => false,
+                    'created_at' => MongoDatabase::utcDateTime(),
+                ]);
             }
         }
 
-        $insertSql = "
-            INSERT INTO crowdsourced_fares
-            (user_id, vehicle_type, origin_name, origin_lat, origin_lng, dest_name, dest_lat, dest_lng, api_distance_km, fare_paid_bdt, weather_condition, traffic_condition, is_peak_hour, upvotes, status)
-            VALUES
-            (:user_id, :vehicle, :orig_name, :orig_lat, :orig_lng, :dest_name, :dest_lat, :dest_lng, :dist, :fare, :weather, :traffic, :peak, 1, 'approved')
-        ";
-
-        $insStmt = $pdo->prepare($insertSql);
-        $insStmt->execute([
-            ':user_id' => $userId,
-            ':vehicle' => $vehicle,
-            ':orig_name' => $originName,
-            ':orig_lat' => $originLat,
-            ':orig_lng' => $originLng,
-            ':dest_name' => $destName,
-            ':dest_lat' => $destLat,
-            ':dest_lng' => $destLng,
-            ':dist' => $apiDistanceKm,
-            ':fare' => $farePaid,
-            ':weather' => in_array($weather, ['clear', 'rain', 'waterlogged', 'extreme_heat'], true) ? $weather : 'clear',
-            ':traffic' => in_array($traffic, ['normal', 'moderate', 'heavy_jam'], true) ? $traffic : 'normal',
-            ':peak' => $isPeak,
+        $fareId = Database::nextSequence('crowdsourced_fares');
+        $faresCol->insertOne([
+            'id' => $fareId,
+            'user_id' => $userId,
+            'commuter_name' => $userId !== null ? $name : 'Commuter',
+            'vehicle_type' => $vehicle,
+            'origin_name' => $originName,
+            'origin_lat' => $originLat,
+            'origin_lng' => $originLng,
+            'origin_location' => [
+                'type' => 'Point',
+                'coordinates' => [$originLng, $originLat],
+            ],
+            'dest_name' => $destName,
+            'dest_lat' => $destLat,
+            'dest_lng' => $destLng,
+            'dest_location' => [
+                'type' => 'Point',
+                'coordinates' => [$destLng, $destLat],
+            ],
+            'api_distance_km' => $apiDistanceKm,
+            'fare_paid_bdt' => $farePaid,
+            'weather_condition' => in_array($weather, ['clear', 'rain', 'waterlogged', 'extreme_heat'], true) ? $weather : 'clear',
+            'traffic_condition' => in_array($traffic, ['normal', 'moderate', 'heavy_jam'], true) ? $traffic : 'normal',
+            'is_peak_hour' => $isPeak,
+            'upvotes' => 1,
+            'downvotes' => 0,
+            'status' => 'approved',
+            'created_at' => MongoDatabase::utcDateTime(),
         ]);
-
-        $fareId = (int)$pdo->lastInsertId();
 
         echo json_encode([
             'status' => 'success',
